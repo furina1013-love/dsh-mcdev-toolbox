@@ -35,7 +35,7 @@ git clone git@github.com:furina1013-love/dsh-mcdev-toolbox.git
 
 也可以通过 Harness 的 Plugin Manager 或 `cords` CLI 安装本地 bundle。安装后需要**重启 Harness**；重启后请从**新对话**开始，已有会话不会变化。
 
-安装成功后，Web profile 的 `dsh.profile.bundles` 应包含 `@local/dsh-mcdev-toolbox`，`dsh --profile web --dump-config` 的输出中应出现 `id: mcdev-toolbox`。
+安装成功后，profile 的 `dsh.profile.bundles` 应包含 `@local/dsh-mcdev-toolbox`，`dsh --profile <profile> --dump-config` 的输出中应出现 `id: mcdev-toolbox`。
 
 ## 使用方式
 
