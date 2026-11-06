@@ -147,6 +147,7 @@ export async function detectProject(cwd) {
   }
   const profile = versionProfile(minecraftVersion);
   const warnings = [];
+  if (minecraftVersion !== undefined && !profile.known) warnings.push('Minecraft version ' + minecraftVersion + ' is not in the built-in version table; version-specific checks use fallback conventions');
   if (loader === 'unknown') warnings.push('Could not identify Fabric/NeoForge/Forge from build files or metadata.');
   if (minecraftVersion === undefined) warnings.push('Could not read the Minecraft version.');
   else if (!profile.known) warnings.push('Unknown Minecraft version profile: ' + minecraftVersion + '; version-specific checks may be approximate.');

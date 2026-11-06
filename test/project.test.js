@@ -70,6 +70,7 @@ test('does not compare Java versions when the version profile has no requirement
   const project = await detectProject(cwd);
   assert.equal(project.minecraftVersion, 'snapshot');
   assert.equal(project.versionProfile.java, undefined);
+  assert.ok(project.warnings.some((warning) => warning.includes('not in the built-in version table')));
   const validation = await validateProject(project);
   assert.ok(!validation.warnings.some((warning) => warning.includes('may be too old')));
 });
