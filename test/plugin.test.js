@@ -75,4 +75,9 @@ test('activate registers group tools and deactivate removes them', async () => {
   assert.deepEqual(removed.deactivated, ['project']);
   assert.equal(fresh.registered.has('mcdev_project'), false);
   assert.equal(fresh.registered.has('mcdev_build'), false);
+  const code = await control.execute({ action: 'activate', groups: ['code'] }, { agent: fresh.agent, signal: new AbortController().signal });
+  assert.deepEqual(code.activated, ['code']);
+  assert.ok(fresh.registered.has('mcdev_mappings'));
+  assert.ok(fresh.registered.has('mcdev_mixin'));
+  assert.ok(fresh.registered.has('mcdev_jar'));
 });
