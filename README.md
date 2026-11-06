@@ -2,14 +2,15 @@
 
 > 面向 **Minecraft Java Edition** 模组开发的 DeepSeek Harness Host 插件：新对话里只暴露一个很小的控制工具；AI 判断任务确实与 MC 模组开发有关后，再按需激活项目、资源、数据、代码、诊断五组工具。工具在**下一次请求**由 DSH 追加到会话末尾，旧会话和已恢复会话不会被修改。
 
-支持 Fabric、NeoForge、Forge 和 Architectury 项目。所有工具只读取本地项目文件、JDK、Gradle wrapper 和本地映射缓存，不联网、不上传源码。
+支持 Fabric、NeoForge、Forge 和 Architectury 项目。所有工具只读取本地项目文件、JAR、JDK、Gradle wrapper 和本地映射缓存，不联网、不上传源码。
 
 ## 特性
 
-- **按需加载**：默认只注册一个控制工具 `mcdev_toolbox`，避免每个对话都携带 7 个无关工具。
+- **按需加载**：默认只注册一个控制工具 `mcdev_toolbox`，避免每个对话都携带 8 个无关工具。
 - **新会话隔离**：插件安装、升级或恢复旧会话时，不会给已有历史补工具或提示词。
 - **版本感知**：根据 `gradle.properties`、`fabric.mod.json`、`mods.toml` 等文件识别 Minecraft 版本，自动切换 Java 版本、数据包目录、配方结果键、ingredient 格式和 1.21.4+ item model definition。
 - **本地优先**：不启动 Minecraft，不访问网络；静态检查 + Gradle 构建辅助，最终仍以游戏内测试为准。
+- **JAR 逆向辅助**：`mcdev_jar` 可读取项目构建产物或依赖 JAR 的 manifest、Fabric/Forge/NeoForge 元数据、条目和 class 结构；class 结构无需 JDK，`disassemble` 需要本机 `javap`。
 - **输出可控**：工具结果有字符上限，Gradle 有硬超时，大日志只保留崩溃尾部和高信号片段。
 
 ## 安装
@@ -67,6 +68,7 @@ git clone git@github.com:furina1013-love/dsh-mcdev-toolbox.git
 | `data` | `mcdev_data` | `recipe` / `tag` / `loot` / `validate` | 生成或校验 shaped、shapeless、熔炉、高炉、烟熏、营火、切石、锻造配方；item/block tag 与简单方块 loot table。 |
 | `code` | `mcdev_mappings` | `query` | 搜索本地 Tiny/TSRG/ProGuard 映射文件，返回 official/named 类、方法、字段。 |
 | `code` | `mcdev_mixin` | `validate` / `list` / `targets` | 校验 `*.mixins.json`、package、mixin 源类和 refmap；列出所有 `@Mixin` target。 |
+| `code` | `mcdev_jar` | `inspect` / `list` / `read` / `class` / `disassemble` | 只读检查项目内 `.jar`/`.zip`：manifest、Fabric/Forge/NeoForge 元数据、条目和嵌套 JAR；`class` 内置解析字段/方法/签名/字符串常量/引用，`disassemble` 调用本机 `javap`。不执行 JAR。 |
 | `diagnostics` | `mcdev_log` | `path`（可选） | 分析 `run/logs/latest.log`、`logs/latest.log` 或最新 crash report，识别 Mixin、依赖、重复 mod、registry、class version、NoSuchMethod 等签名并给出下一步。 |
 
 ## 新会话与旧会话
@@ -125,7 +127,7 @@ cd dsh-mcdev-toolbox
 npm test
 ```
 
-测试不依赖真实 Minecraft 或 Gradle，使用临时目录构造 Fabric 项目、资源、配方、mixin、mapping 和日志 fixture。当前覆盖 **41 个 `node:test` 用例**，包括工具 schema 形状、新/旧会话判定、locale 路径穿越、Gradle 参数拒绝、1.20.4/1.20.5+ ingredient 格式、模型环检测、client-only 源码根和日志尾部截断。
+测试不依赖真实 Minecraft 或 Gradle，使用临时目录构造 Fabric 项目、资源、配方、mixin、mapping 和日志 fixture。当前覆盖 **46 个 `node:test` 用例**，包括工具 schema 形状、新/旧会话判定、locale 路径穿越、Gradle 参数拒绝、1.20.4/1.20.5+ ingredient 格式、模型环检测、client-only 源码根、JAR/class 解析和日志尾部截断。
 
 ### 目录
 
@@ -139,6 +141,10 @@ src/data.js           recipe/tag/loot 生成与校验
 src/mappings.js       Tiny/TSRG/ProGuard 映射搜索
 src/mixin.js          mixin config/source 校验
 src/log.js            crash/log 签名分析
+src/jar.js            ZIP/JAR 中央目录读取、条目解压和元数据摘要
+src/classfile.js      JVM class 常量池、字段、方法、签名和引用解析
+src/jar-tool.js       JAR inspect/list/read/class/disassemble 实现
+src/tools/jar.js      mcdev_jar 参数适配
 src/session.js        新会话 vs 旧会话判定
 test/                 node:test 单测
 ```
@@ -149,5 +155,6 @@ test/                 node:test 单测
 - **不重写** DSH 的 tool-addition 历史；只使用公开的 `ctx.tools.register` / dispose，让 DSH 自己记录工具增删。
 - **不修改**旧会话：旧会话没有本插件的 scoped 注册，也没有指引 section。
 - **不联网**：mapping 搜索只读本地缓存；找不到 mapping 文件时明确返回提示，不猜测。
+- **JAR 只读**：不把 JAR 解压到磁盘、不执行 JAR；只读取中央目录和选定条目，限制归档/条目大小并拒绝路径穿越、ZIP64、加密和异常压缩方法。`disassemble` 只调用本机 `javap`。
 - **不执行任意 Gradle task**：只允许常见构建/运行任务；需要自定义任务时先改白名单，而不是把 shell 命令塞进工具。
-- **不输出无限内容**：所有工具结果和 Gradle 输出都有字符上限；大日志只保留尾部关键段。
+- **不输出无限内容**：所有工具结果和 Gradle 输出都有字符上限；大日志只保留尾部关键段。JAR 列表和 class 输出同样受 `maxOutputChars` 约束。

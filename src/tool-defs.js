@@ -4,6 +4,7 @@ import { runAssets } from './tools/assets.js';
 import { runData } from './tools/data.js';
 import { runMappings } from './tools/mappings.js';
 import { runMixin } from './tools/mixin.js';
+import { runJar } from './tools/jar.js';
 import { runLog } from './tools/log.js';
 import { boundText } from './util.js';
 
@@ -29,10 +30,10 @@ export const GROUPS = {
     hint: 'Use for datapack content; validates recipes and tags without launching Minecraft.'
   },
   code: {
-    title: 'Mappings + mixins',
-    summary: 'Search local Tiny/TSRG/ProGuard mappings for classes, methods and fields; validate mixin configs and list @Mixin targets.',
-    tools: ['mcdev_mappings', 'mcdev_mixin'],
-    hint: 'Use when writing mixins or porting code across mappings versions.'
+    title: 'Mappings, mixins + jars',
+    summary: 'Search local Tiny/TSRG/ProGuard mappings; validate mixin configs; inspect, read and reverse-engineer local JARs.',
+    tools: ['mcdev_mappings', 'mcdev_mixin', 'mcdev_jar'],
+    hint: 'Use when writing mixins, porting code across mappings versions, or learning from a built/dependency jar.'
   },
   diagnostics: {
     title: 'Crash + log analysis',
@@ -81,7 +82,7 @@ const jsonText = (value, limit = 12000) => {
 export function controlTool({ activate, deactivate, status }) {
   return {
     name: 'mcdev_toolbox',
-    description: 'Minecraft Java mod-development toolbox for Fabric, NeoForge, Forge and Architectury projects. Call action=activate with only the groups this task needs; the tools appear on the next step. Groups: project (project/loader/Gradle build), assets (models/blockstates/lang), data (recipes/tags/loot), code (mappings/mixins), diagnostics (crash logs). If the task is not Minecraft Java mod development, do not call this tool.',
+    description: 'Minecraft Java mod-development toolbox for Fabric, NeoForge, Forge and Architectury projects. Call action=activate with only the groups this task needs; the tools appear on the next step. Groups: project (project/loader/Gradle build), assets (models/blockstates/lang), data (recipes/tags/loot), code (mappings/mixins/jars), diagnostics (crash logs). If the task is not Minecraft Java mod development, do not call this tool.',
     parameters: compileParameters({
       action: {
         type: 'string',
@@ -224,7 +225,15 @@ export function groupTools({ ctx, config }) {
       }, async (args, exec) => runMappings(args, { cwd: await cwdOf(exec) })),
       createTool('mcdev_mixin', 'Validate mixin JSON configs and source classes, or list every @Mixin target in the project. Read-only; does not launch Minecraft.', {
         action: { type: 'string', enum: ['validate', 'list', 'targets'], description: 'validate configs/classes; list configs; targets lists @Mixin annotations.' }
-      }, async (args, exec) => runMixin(args, { cwd: await cwdOf(exec) }))
+      }, async (args, exec) => runMixin(args, { cwd: await cwdOf(exec) })),
+      createTool('mcdev_jar', 'Inspect and reverse-engineer a local JAR without extracting it. action=inspect summarizes manifest, fabric/Forge/NeoForge metadata, classes, resources and nested jars; list filters entries; read returns one text entry; class parses fields, methods, signatures, string constants and references without a JDK; disassemble runs javap when a JDK is available. Read-only; never executes the jar.', {
+        action: { type: 'string', enum: ['inspect', 'list', 'read', 'class', 'disassemble'], description: 'inspect is the default; list/read/class/disassemble inspect one archive.' },
+        path: { type: 'string', description: 'Project-relative .jar/.zip path. When omitted, uses the only jar under build/libs, build/devlibs, run/mods, or libs.' },
+        entry: { type: 'string', description: 'For action=read: exact entry path, e.g. fabric.mod.json or META-INF/MANIFEST.MF.' },
+        class: { type: 'string', description: 'For action=class/disassemble: dotted or slashed class name, e.g. com.example.Foo or com/example/Foo.' },
+        prefix: { type: 'string', description: 'For action=list: only entries equal to this path or under this directory.' },
+        limit: { type: 'integer', description: 'For action=list: maximum entries 1-1000, default 200.' }
+      }, async (args, exec) => runJar(args, { cwd: await cwdOf(exec), maxOutputChars: config.maxOutputChars }))
     ],
     diagnostics: [
       createTool('mcdev_log', 'Analyze a Minecraft launcher log or crash report and return known failure signatures with short excerpts and next actions. Defaults to run/logs/latest.log or the newest crash report.', {

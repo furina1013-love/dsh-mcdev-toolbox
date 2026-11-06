@@ -6,7 +6,7 @@ test('group catalog is complete and unique', () => {
   assert.deepEqual(GROUP_NAMES, ['project', 'assets', 'data', 'code', 'diagnostics']);
   const names = allGroupTools();
   assert.equal(new Set(names).size, names.length);
-  assert.deepEqual(names.sort(), ['mcdev_assets', 'mcdev_build', 'mcdev_data', 'mcdev_log', 'mcdev_mappings', 'mcdev_mixin', 'mcdev_project'].sort());
+  assert.deepEqual(names.sort(), ['mcdev_assets', 'mcdev_build', 'mcdev_data', 'mcdev_jar', 'mcdev_log', 'mcdev_mappings', 'mcdev_mixin', 'mcdev_project'].sort());
   for (const group of GROUP_NAMES) assert.ok(GROUPS[group].tools.length > 0);
 });
 
@@ -44,4 +44,8 @@ test('group tool factories produce unique valid definitions', () => {
   assert.equal(data.parameters.properties.ingredients.items.oneOf.length, 2);
   assert.equal(data.parameters.properties.ingredients.items.oneOf[0].type, 'string');
   assert.deepEqual(data.parameters.properties.values.items.oneOf[1].required, ['id']);
+  const jar = all.find((tool) => tool.name === 'mcdev_jar');
+  assert.deepEqual(jar.parameters.properties.action.enum, ['inspect', 'list', 'read', 'class', 'disassemble']);
+  assert.equal(jar.parameters.properties.action.required, undefined);
+  assert.equal(jar.parameters.properties.path.type, 'string');
 });
