@@ -6,7 +6,7 @@ import { GROUPS, GROUP_NAMES, controlTool, groupTools } from './src/tool-defs.js
 /** Stable Loader identity. */
 export const name = PLUGIN_NAME;
 /** Host services required by this plugin. */
-export const inject = ['tools', 'systemPrompt', 'workingDirectory'];
+export const inject = ['tools', 'systemPrompt', 'workingDirectory', 'agents'];
 
 const GUIDANCE_ORDER = 10050;
 
@@ -21,7 +21,6 @@ function guidanceText() {
 function installScoped(scoped, config, logger) {
   const definitions = groupTools({ ctx: scoped, config });
   const active = new Map();
-  const toolDisposers = new Map();
 
   const listNames = () => [...active.keys()];
   const listTools = () => [...active.values()].flatMap((entry) => entry.tools);
@@ -134,6 +133,11 @@ export async function apply(ctx, rawConfig) {
     installs.delete(agent);
     Promise.resolve(fiber.dispose?.()).catch((error) => logger.warn('mcdev-toolbox: scoped dispose failed: ' + String(error)));
   });
+  try {
+    for (const agent of ctx.agents.list()) install(agent, undefined);
+  } catch (error) {
+    logger.warn('mcdev-toolbox: startup reconcile failed: ' + (error instanceof Error ? error.message : String(error)));
+  }
   ctx.effect(() => () => {
     for (const fiber of installs.values()) { try { Promise.resolve(fiber.dispose?.()).catch(() => {}); } catch { /* best effort */ } }
     installs.clear();

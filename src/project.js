@@ -235,6 +235,11 @@ export async function validateProject(project) {
     try {
       const pack = await readJson(packFile);
       if (!Number.isInteger(pack.pack?.pack_format)) warnings.push('pack.mcmeta: pack.pack_format must be an integer');
+      else {
+        const expected = project.versionProfile?.resourcePack;
+        const supported = Array.isArray(pack.pack.supported_formats) ? pack.pack.supported_formats : [];
+        if (expected !== undefined && pack.pack.pack_format !== expected && !supported.includes(expected)) warnings.push('pack.mcmeta: pack_format ' + pack.pack.pack_format + ' does not match Minecraft ' + String(project.minecraftVersion) + ' (expected ' + expected + ')');
+      }
     } catch (error) { errors.push('pack.mcmeta: invalid JSON (' + (error instanceof Error ? error.message : String(error)) + ')'); }
   } else if (project.loader !== 'unknown') {
     warnings.push('src/main/resources/pack.mcmeta is missing');

@@ -30,6 +30,22 @@ export async function readTextLimited(file, maxBytes = 1500000) {
   }
 }
 
+/** Read the tail of a UTF-8 file without loading more than maxBytes. */
+export async function readTailLimited(file, maxBytes = 1500000) {
+  const stat = await fs.stat(file);
+  if (!stat.isFile()) throw new Error('not a file: ' + file);
+  const length = Math.min(stat.size, maxBytes);
+  const start = Math.max(0, stat.size - length);
+  const handle = await fs.open(file, 'r');
+  try {
+    const buffer = Buffer.alloc(length);
+    await handle.read(buffer, 0, length, start);
+    return { text: buffer.toString('utf8'), bytes: stat.size, truncated: stat.size > maxBytes };
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function readJson(file) {
   const { text } = await readTextLimited(file, 4000000);
   return JSON.parse(text.replace(/^\uFEFF/, ''));

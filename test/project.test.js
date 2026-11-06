@@ -40,3 +40,10 @@ test('reports broken metadata', async () => {
   assert.ok(validation.errors.some((error) => error.includes('id must match')));
   assert.ok(validation.errors.some((error) => error.includes('version must be')));
 });
+
+test('warns when pack.mcmeta format does not match the Minecraft version', async () => {
+  const cwd = await fixture();
+  await fs.writeFile(path.join(cwd, 'src/main/resources/pack.mcmeta'), JSON.stringify({ pack: { pack_format: 99, description: 'test' } }));
+  const validation = await validateProject(await detectProject(cwd));
+  assert.ok(validation.warnings.some((warning) => warning.includes('does not match Minecraft')));
+});

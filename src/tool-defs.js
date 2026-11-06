@@ -134,12 +134,12 @@ export function groupTools({ ctx, config }) {
       tool('mcdev_data', 'Generate or validate Minecraft data JSON. recipe writes shaped/shapeless/cooking/stonecutting/smithing recipes with version-correct result keys. tag and loot write datapack JSON. validate checks recipe/tag files without launching the game.', {
         action: { type: 'string', required: true, enum: ['recipe', 'tag', 'loot', 'validate'], description: 'Operation to perform.' },
         name: { type: 'string', description: 'Recipe/loot path name, e.g. ruby_block or gears/iron_gear.' },
-        type: { type: 'string', enum: ['crafting_shaped', 'crafting_shapeless', 'smelting', 'blasting', 'smoking', 'campfire_cooking', 'stonecutting', 'smithing_transform', 'smithing_trim'], description: 'Recipe type for action=recipe.' },
+        type: { type: 'string', enum: ['crafting_shaped', 'crafting_shapeless', 'smelting', 'blasting', 'smoking', 'campfire_cooking', 'stonecutting', 'smithing', 'smithing_transform', 'smithing_trim'], description: 'Recipe type for action=recipe.' },
         group: { type: 'string', description: 'Optional recipe group.' },
         category: { type: 'string', description: 'Optional recipe category, e.g. misc, building, equipment.' },
         pattern: { type: 'array', items: { type: 'string' }, description: 'Shaped recipe rows, 1-3 strings of 1-3 characters.' },
         key: { type: 'object', additionalProperties: true, description: 'Shaped recipe key: character to item id, #tag, or {item|tag}.' },
-        ingredients: { type: 'array', items: { type: 'string' }, description: 'Shapeless ingredients; strings may be item ids or #tags.' },
+        ingredients: { type: 'array', description: 'Shapeless ingredients; item ids, #tags, or {item|tag} objects.' },
         ingredient: { type: 'string', description: 'Single ingredient for cooking/stonecutting recipes.' },
         result: { type: 'string', description: 'Result item id.' },
         count: { type: 'integer', description: 'Result count 1-99.' },
@@ -150,7 +150,7 @@ export function groupTools({ ctx, config }) {
         addition: { type: 'string', description: 'Smithing addition ingredient.' },
         tag: { type: 'string', description: 'Namespaced tag id for action=tag, e.g. minecraft:planks.' },
         kind: { type: 'string', enum: ['item', 'block', 'entity_type', 'fluid', 'game_event', 'function'], description: 'Tag kind for action=tag, default item.' },
-        values: { type: 'array', items: { type: 'string' }, description: 'Tag values: item ids, #tag ids, or objects with id/required.' },
+        values: { type: 'array', description: 'Tag values: item ids, #tag ids, or objects with id/required.' },
         replace: { type: 'boolean', description: 'Set replace:true for action=tag.' },
         item: { type: 'string', description: 'Loot drop item id for action=loot; defaults to <modid>:<name>.' },
         overwrite: { type: 'boolean', description: 'Overwrite existing files (default false).' }

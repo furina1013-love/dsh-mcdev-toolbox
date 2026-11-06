@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { detectProject } from './project.js';
-import { exists, readTextLimited, relativeTo, resolveInside, walk } from './util.js';
+import { exists, readTailLimited, relativeTo, resolveInside, walk } from './util.js';
 
 const SIGNATURES = [
   { kind: 'mixin', pattern: /Mixin apply failed|InvalidMixinException|MixinTransformerError|Mixin apply for mod/i, suggestion: 'Read the mixin config/class named in the excerpt; verify the target class and method descriptor against mappings for this exact Minecraft version.' },
@@ -59,7 +59,7 @@ function excerptAround(lines, index, radius = 2) {
 /** Turn a launcher log or crash report into a short, actionable diagnosis. */
 export async function analyzeLog(args, { cwd } = {}) {
   const { root, file } = await findLog(cwd, args.path);
-  const { text, bytes, truncated } = await readTextLimited(file, 1_500_000);
+  const { text, bytes, truncated } = await readTailLimited(file, 1_500_000);
   const lines = text.split(/\r?\n/);
   const findings = [];
   const seen = new Set();

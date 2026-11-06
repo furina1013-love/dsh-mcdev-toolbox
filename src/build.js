@@ -95,7 +95,7 @@ export async function runGradle({ cwd, task, args = [], timeoutMs = 180000, maxO
   return {
     ok: success,
     task,
-    project: relativeTo(project.root, project.root),
+    project: project.root,
     exitCode: outcome.code,
     timedOut,
     durationMs,

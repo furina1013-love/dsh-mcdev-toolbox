@@ -53,3 +53,31 @@ test('writes a tag file under the requested namespace', async () => {
   assert.equal(result.ok, true);
   assert.ok(result.path.endsWith('data/minecraft/tags/items/planks.json'));
 });
+
+test('detects model parent cycles', async () => {
+  const cwd = await project('1.21.1');
+  const models = path.join(cwd, 'src/main/resources/assets/testmod/models/block');
+  await fs.mkdir(models, { recursive: true });
+  await fs.writeFile(path.join(models, 'a.json'), JSON.stringify({ parent: 'testmod:block/b' }));
+  await fs.writeFile(path.join(models, 'b.json'), JSON.stringify({ parent: 'testmod:block/a' }));
+  const report = await runAssets({ action: 'validate' }, { cwd });
+  assert.equal(report.ok, false);
+  assert.ok(report.errors.some((message) => message.includes('parent cycle')));
+});
+
+test('warns about missing 1.21.4 item definitions', async () => {
+  const cwd = await project('1.21.4');
+  const models = path.join(cwd, 'src/main/resources/assets/testmod/models/item');
+  await fs.mkdir(models, { recursive: true });
+  await fs.writeFile(path.join(models, 'ruby.json'), JSON.stringify({ parent: 'minecraft:item/generated', textures: { layer0: 'testmod:item/ruby' } }));
+  const report = await runAssets({ action: 'validate' }, { cwd });
+  assert.ok(report.warnings.some((message) => message.includes('item model definition missing')));
+});
+
+test('writes legacy smithing recipes with the item result key', async () => {
+  const cwd = await project('1.20.1');
+  const result = await runData({ action: 'recipe', name: 'ruby_pickaxe', type: 'smithing', template: 'testmod:template', base: 'minecraft:iron_pickaxe', addition: 'testmod:ruby', result: 'testmod:ruby_pickaxe' }, { cwd });
+  const recipe = JSON.parse(await fs.readFile(result.path, 'utf8'));
+  assert.equal(recipe.type, 'minecraft:smithing');
+  assert.deepEqual(recipe.result, { item: 'testmod:ruby_pickaxe', count: 1 });
+});

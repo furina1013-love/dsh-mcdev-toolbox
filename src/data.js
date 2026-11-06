@@ -7,7 +7,7 @@ import { versionProfile } from './version.js';
 const ID_PATTERN = /^[a-z0-9_.-]+:[a-z0-9_./-]+$/;
 const TAG_PATTERN = /^[a-z0-9_.-]+:[a-z0-9_./-]+$/;
 const NAME_PATTERN = /^[a-z0-9_./-]+$/;
-const RECIPE_TYPES = new Set(['crafting_shaped', 'crafting_shapeless', 'smelting', 'blasting', 'smoking', 'campfire_cooking', 'stonecutting', 'smithing_transform', 'smithing_trim']);
+const RECIPE_TYPES = new Set(['crafting_shaped', 'crafting_shapeless', 'smelting', 'blasting', 'smoking', 'campfire_cooking', 'stonecutting', 'smithing', 'smithing_transform', 'smithing_trim']);
 const COOKING = new Set(['smelting', 'blasting', 'smoking', 'campfire_cooking']);
 
 function clean(value, label) {
@@ -146,7 +146,7 @@ export async function runData(args, { cwd } = {}) {
         validateIngredient(json.ingredient, rel + ' ingredient', errors);
       } else if (type === 'stonecutting') {
         validateIngredient(json.ingredient, rel + ' ingredient', errors);
-      } else if (type === 'smithing_transform' || type === 'smithing_trim') {
+      } else if (type === 'smithing' || type === 'smithing_transform' || type === 'smithing_trim') {
         for (const key of ['template', 'base', 'addition']) validateIngredient(json[key], rel + ' ' + key, errors);
       }
       if (type !== 'smithing_trim') {
@@ -229,7 +229,7 @@ export async function runData(args, { cwd } = {}) {
   } else if (type === 'stonecutting') {
     recipe.ingredient = ingredient(args.ingredient, 'ingredient');
     recipe.result = result(args.result, args.count, legacy);
-  } else if (type === 'smithing_transform') {
+  } else if (type === 'smithing' || type === 'smithing_transform') {
     recipe.template = ingredient(args.template, 'template');
     recipe.base = ingredient(args.base, 'base');
     recipe.addition = ingredient(args.addition, 'addition');

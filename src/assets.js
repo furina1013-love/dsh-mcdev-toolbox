@@ -80,7 +80,7 @@ export async function runAssets(args, { cwd, maxOutputChars = 12000 } = {}) {
       let value;
       try { value = await readJson(file); }
       catch (error) { errors.push(relativeTo(resources, file) + ': invalid JSON'); continue; }
-      if (file.includes('/models/')) models.set(relativeTo(assetsRoot, file).replace(/\.json$/, ''), { file, value });
+      if (file.includes('/models/')) models.set(relativeTo(assetsRoot, file).replace(/^models\//, '').replace(/\.json$/, ''), { file, value });
     }
     const refExists = (ref, kind) => {
       const [refNs, ...rest] = String(ref).split(':');
@@ -91,6 +91,22 @@ export async function runAssets(args, { cwd, maxOutputChars = 12000 } = {}) {
         ? exists(path.join(resources, 'assets', refNs, 'models', rel + '.json'))
         : exists(path.join(resources, 'assets', refNs, 'textures', rel + '.png'));
     };
+    const requiredSlots = new Map([
+      ['minecraft:item/generated', ['layer0']],
+      ['minecraft:item/handheld', ['layer0']],
+      ['minecraft:item/handheld_rod', ['layer0']],
+      ['minecraft:block/cube_all', ['all']],
+      ['minecraft:block/cube', ['down', 'up', 'north', 'south', 'east', 'west']],
+      ['minecraft:block/cube_bottom_top', ['bottom', 'top', 'side']],
+      ['minecraft:block/orientable', ['front', 'side', 'top']],
+      ['minecraft:block/cross', ['cross']],
+      ['minecraft:block/cube_column', ['side', 'end']],
+      ['minecraft:block/button', ['texture']],
+      ['minecraft:block/fence_post', ['texture']],
+      ['minecraft:block/fence_side', ['texture']],
+      ['minecraft:block/wall_post', ['wall']],
+      ['minecraft:block/template_wall_post', ['wall']]
+    ]);
     for (const [key, { file, value }] of models) {
       const rel = relativeTo(resources, file);
       if (typeof value !== 'object' || value === null || Array.isArray(value)) { errors.push(rel + ': model must be an object'); continue; }
@@ -105,6 +121,24 @@ export async function runAssets(args, { cwd, maxOutputChars = 12000 } = {}) {
             else if (!(await refExists(ref, 'texture'))) warnings.push(rel + ': texture not found locally: ' + ref);
           }
           if (parent === 'minecraft:item/generated' && value.textures.layer0 === undefined) errors.push(rel + ': item/generated model needs textures.layer0');
+        }
+      }
+      if (typeof parent === 'string') {
+        const seen = new Set([key]);
+        let cursor = parent.startsWith(ns + ':') ? parent.slice(ns.length + 1) : parent;
+        for (let depth = 0; depth < 32; depth += 1) {
+          if (cursor.startsWith('minecraft:')) break;
+          if (seen.has(cursor)) { errors.push(rel + ': parent cycle: ' + [...seen, cursor].join(' -> ')); break; }
+          seen.add(cursor);
+          const parentEntry = models.get(cursor);
+          if (parentEntry === undefined) break;
+          const next = parentEntry.value?.parent;
+          if (typeof next !== 'string') break;
+          cursor = next.startsWith(ns + ':') ? next.slice(ns.length + 1) : next;
+        }
+        const slots = requiredSlots.get(parent);
+        if (slots !== undefined && value.textures !== undefined && typeof value.textures === 'object' && !Array.isArray(value.textures)) {
+          for (const slot of slots) if (value.textures[slot] === undefined) warnings.push(rel + ': parent ' + parent + ' usually needs textures.' + slot);
         }
       }
       if (key.startsWith('block/') && value.parent === undefined && value.textures === undefined) warnings.push(rel + ': block model has no parent and no textures');
@@ -127,6 +161,22 @@ export async function runAssets(args, { cwd, maxOutputChars = 12000 } = {}) {
       const rel = relativeTo(resources, file);
       try { const value = await readJson(file); if (typeof value !== 'object' || value === null || Array.isArray(value)) errors.push(rel + ': lang must be an object'); }
       catch { errors.push(rel + ': invalid JSON'); }
+    }
+    if (versionProfile(project.minecraftVersion).itemDefinitions) {
+      const itemDefinitions = jsonFiles.filter((entry) => entry.includes('/items/'));
+      for (const file of itemDefinitions) {
+        const rel = relativeTo(resources, file);
+        let value;
+        try { value = await readJson(file); } catch { continue; }
+        if (value === null || typeof value !== 'object' || Array.isArray(value)) { errors.push(rel + ': item definition must be an object'); continue; }
+        if (value.model === undefined) warnings.push(rel + ': item definition has no model');
+        else if (value.model?.type === 'minecraft:model' && typeof value.model.model === 'string' && !(await refExists(value.model.model, 'model'))) warnings.push(rel + ': model not found locally: ' + value.model.model);
+      }
+      for (const key of models.keys()) {
+        if (!key.startsWith('item/')) continue;
+        const definition = resolveInside(assetsRoot, 'items/' + key.slice('item/'.length) + '.json');
+        if (!(await exists(definition))) warnings.push('1.21.4+ item model definition missing: assets/' + ns + '/items/' + key.slice('item/'.length) + '.json');
+      }
     }
     if (!(await exists(assetsRoot))) warnings.push('assets namespace not found: assets/' + ns);
     return { ok: errors.length === 0, action, namespace: ns, models: models.size, jsonFiles: jsonFiles.length, errors: errors.slice(0, 40), warnings: warnings.slice(0, 40) };
