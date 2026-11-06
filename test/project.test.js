@@ -63,3 +63,13 @@ test('accepts client-only sources and finds client mixin classes', async () => {
   assert.equal(validation.ok, true);
   assert.ok(!validation.warnings.some((warning) => warning.includes('mixin class source not found')));
 });
+
+test('does not compare Java versions when the version profile has no requirement', async () => {
+  const cwd = await fixture();
+  await fs.writeFile(path.join(cwd, 'gradle.properties'), 'minecraft_version=snapshot\njava_version=1\n');
+  const project = await detectProject(cwd);
+  assert.equal(project.minecraftVersion, 'snapshot');
+  assert.equal(project.versionProfile.java, undefined);
+  const validation = await validateProject(project);
+  assert.ok(!validation.warnings.some((warning) => warning.includes('may be too old')));
+});

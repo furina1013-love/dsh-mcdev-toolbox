@@ -256,8 +256,8 @@ export async function validateProject(project) {
   }
   if (project.sourceRoots.length === 0) errors.push('no Java source root found (src/main/java or src/client/java)');
   if (project.loader !== 'unknown' && project.minecraftVersion !== undefined && project.javaVersion !== undefined) {
-    const required = String(versionProfile(project.minecraftVersion).java ?? '');
-    if (required !== undefined && Number(project.javaVersion) < Number(required)) {
+    const required = versionProfile(project.minecraftVersion).java;
+    if (required !== undefined && Number(project.javaVersion) < required) {
       warnings.push('Java ' + project.javaVersion + ' may be too old for Minecraft ' + project.minecraftVersion + ' (expected Java ' + required + ')');
     }
   }

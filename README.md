@@ -87,7 +87,7 @@ cd dsh-mcdev-toolbox
 npm test
 ```
 
-测试不依赖真实 Minecraft 或 Gradle：用临时目录构造 Fabric 项目、资源、配方、mixin、mapping 和日志 fixture。当前覆盖 40 个 `node:test` 用例，包括 schema 形状、旧/新会话判定、locale 路径穿越、Gradle 参数拒绝、1.20.4/1.20.5+ ingredient 格式、模型环检测、client-only 源码根和日志尾部截断。
+测试不依赖真实 Minecraft 或 Gradle：用临时目录构造 Fabric 项目、资源、配方、mixin、mapping 和日志 fixture。当前覆盖 41 个 `node:test` 用例，包括 schema 形状、旧/新会话判定、locale 路径穿越、Gradle 参数拒绝、1.20.4/1.20.5+ ingredient 格式、模型环检测、client-only 源码根和日志尾部截断。
 
 ### 目录
 
