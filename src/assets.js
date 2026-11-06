@@ -6,6 +6,7 @@ import { versionProfile } from './version.js';
 
 const NAME_PATTERN = /^[a-z0-9_./-]+$/;
 const NAMESPACE_PATTERN = /^[a-z0-9_.-]{2,64}$/;
+const LOCALE_PATTERN = /^[a-z][a-z0-9_]{1,20}$/;
 
 function cleanName(value, label = 'name') {
   if (typeof value !== 'string' || !NAME_PATTERN.test(value) || value.includes('..')) {
@@ -184,7 +185,9 @@ export async function runAssets(args, { cwd, maxOutputChars = 12000 } = {}) {
 
   if (action === 'lang') {
     if (args.entries === undefined || typeof args.entries !== 'object' || Array.isArray(args.entries)) throw new Error('entries must be an object of translation key to text');
-    const file = path.join(dataRoot, (args.locale ?? 'en_us') + '.json');
+    const locale = args.locale ?? 'en_us';
+    if (typeof locale !== 'string' || !LOCALE_PATTERN.test(locale)) throw new Error('locale must look like en_us: lowercase letters, digits and underscore, 2-21 characters');
+    const file = resolveInside(dataRoot, locale + '.json');
     const entries = {};
     for (const [key, value] of Object.entries(args.entries)) {
       if (typeof key !== 'string' || key.length === 0 || typeof value !== 'string') throw new Error('lang entries must map non-empty keys to strings');

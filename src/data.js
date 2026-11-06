@@ -20,26 +20,31 @@ function id(value, label) {
   return value;
 }
 
-function ingredient(value, label) {
+function ingredient(value, label, modern = false) {
   if (typeof value === 'string') {
     if (value.startsWith('#')) {
       const tag = value.slice(1);
       if (!TAG_PATTERN.test(tag)) throw new Error(label + ' must be a valid tag id');
-      return { tag };
+      return modern ? '#' + tag : { tag };
     }
-    return { item: id(value, label) };
+    const itemId = id(value, label);
+    return modern ? itemId : { item: itemId };
   }
   if (Array.isArray(value)) {
     if (value.length === 0) throw new Error(label + ' must not be an empty ingredient array');
-    return value.map((entry, index) => ingredient(entry, label + '[' + index + ']'));
+    return value.map((entry, index) => ingredient(entry, label + '[' + index + ']', modern));
   }
   if (value !== null && typeof value === 'object') {
-    const copy = {};
-    if (typeof value.item === 'string') copy.item = id(value.item, label + '.item');
-    else if (typeof value.tag === 'string') copy.tag = value.tag.replace(/^#/, '');
-    else throw new Error(label + ' needs item or tag');
-    if (!TAG_PATTERN.test(copy.item ?? copy.tag)) throw new Error(label + ' must be a namespaced id');
-    return copy;
+    if (typeof value.item === 'string') {
+      const itemId = id(value.item, label + '.item');
+      return modern ? itemId : { item: itemId };
+    }
+    if (typeof value.tag === 'string') {
+      const tag = value.tag.replace(/^#/, '');
+      if (!TAG_PATTERN.test(tag)) throw new Error(label + ' must be a valid tag id');
+      return modern ? '#' + tag : { tag };
+    }
+    throw new Error(label + ' needs item or tag');
   }
   throw new Error(label + ' must be an item id, #tag, or {item|tag}');
 }
@@ -95,7 +100,7 @@ async function writeJson(file, value, overwrite) {
   return { path: file, status: 'written' };
 }
 
-function validateIngredient(value, label, errors) {
+function validateIngredient(value, label, errors, modern = false) {
   if (typeof value === 'string') {
     if (value.startsWith('#')) { if (!TAG_PATTERN.test(value.slice(1))) errors.push(label + ': invalid tag ' + value); }
     else if (!ID_PATTERN.test(value)) errors.push(label + ': invalid item id ' + value);
@@ -103,10 +108,11 @@ function validateIngredient(value, label, errors) {
   }
   if (Array.isArray(value)) {
     if (value.length === 0) errors.push(label + ': ingredient array must not be empty');
-    else value.forEach((entry, index) => validateIngredient(entry, label + '[' + index + ']', errors));
+    else value.forEach((entry, index) => validateIngredient(entry, label + '[' + index + ']', errors, modern));
     return;
   }
   if (value !== null && typeof value === 'object') {
+    if (modern) { errors.push(label + ': object ingredient is legacy; from 1.20.5 use an item id string or #tag'); return; }
     const name = value.item ?? value.tag;
     if (typeof name !== 'string' || !ID_PATTERN.test(name)) errors.push(label + ': needs a valid item or tag');
     return;
@@ -119,6 +125,7 @@ export async function runData(args, { cwd } = {}) {
   const action = args.action ?? 'validate';
   const ns = project.modId;
   if (typeof ns !== 'string') throw new Error('project mod id is unknown');
+  const modernIngredients = versionProfile(project.minecraftVersion).ingredientStyle === 'string';
   const overwrite = Boolean(args.overwrite);
   if (action === 'validate') {
     const errors = [];
@@ -138,16 +145,16 @@ export async function runData(args, { cwd } = {}) {
         if (!Array.isArray(json.pattern) || json.pattern.length === 0 || json.pattern.length > 3 || json.pattern.some((row) => typeof row !== 'string' || row.length === 0 || row.length > 3)) errors.push(rel + ': pattern must be 1-3 rows of 1-3 characters');
         else if (new Set(json.pattern.map((row) => row.length)).size > 1) errors.push(rel + ': all pattern rows must have the same width');
         if (json.key === null || typeof json.key !== 'object' || Array.isArray(json.key)) errors.push(rel + ': key must be an object');
-        else for (const [char, value] of Object.entries(json.key)) { if (char.length !== 1) errors.push(rel + ': key must be one character'); validateIngredient(value, rel + ' key ' + char, errors); }
+        else for (const [char, value] of Object.entries(json.key)) { if (char.length !== 1) errors.push(rel + ': key must be one character'); validateIngredient(value, rel + ' key ' + char, errors, modernIngredients); }
       } else if (type === 'crafting_shapeless') {
         if (!Array.isArray(json.ingredients) || json.ingredients.length === 0) errors.push(rel + ': ingredients must be a non-empty array');
-        else json.ingredients.forEach((value, index) => validateIngredient(value, rel + ' ingredient ' + index, errors));
+        else json.ingredients.forEach((value, index) => validateIngredient(value, rel + ' ingredient ' + index, errors, modernIngredients));
       } else if (COOKING.has(type)) {
-        validateIngredient(json.ingredient, rel + ' ingredient', errors);
+        validateIngredient(json.ingredient, rel + ' ingredient', errors, modernIngredients);
       } else if (type === 'stonecutting') {
-        validateIngredient(json.ingredient, rel + ' ingredient', errors);
+        validateIngredient(json.ingredient, rel + ' ingredient', errors, modernIngredients);
       } else if (type === 'smithing' || type === 'smithing_transform' || type === 'smithing_trim') {
-        for (const key of ['template', 'base', 'addition']) validateIngredient(json[key], rel + ' ' + key, errors);
+        for (const key of ['template', 'base', 'addition']) validateIngredient(json[key], rel + ' ' + key, errors, modernIngredients);
       }
       if (type !== 'smithing_trim') {
         const expected = versionProfile(project.minecraftVersion).resultKey;
@@ -215,29 +222,29 @@ export async function runData(args, { cwd } = {}) {
     if (!Array.isArray(args.pattern) || args.pattern.length === 0 || args.pattern.length > 3) throw new Error('pattern must have 1-3 rows');
     if (args.key === null || typeof args.key !== 'object' || Array.isArray(args.key)) throw new Error('key must be an object of character to ingredient');
     recipe.pattern = args.pattern;
-    recipe.key = Object.fromEntries(Object.entries(args.key).map(([char, value]) => [char, ingredient(value, 'key.' + char)]));
+    recipe.key = Object.fromEntries(Object.entries(args.key).map(([char, value]) => [char, ingredient(value, 'key.' + char, modernIngredients)]));
     recipe.result = result(args.result, args.count, legacy);
   } else if (type === 'crafting_shapeless') {
     if (!Array.isArray(args.ingredients) || args.ingredients.length === 0) throw new Error('ingredients must be a non-empty array');
-    recipe.ingredients = args.ingredients.map((value, index) => ingredient(value, 'ingredients[' + index + ']'));
+    recipe.ingredients = args.ingredients.map((value, index) => ingredient(value, 'ingredients[' + index + ']', modernIngredients));
     recipe.result = result(args.result, args.count, legacy);
   } else if (COOKING.has(type)) {
-    recipe.ingredient = ingredient(args.ingredient, 'ingredient');
+    recipe.ingredient = ingredient(args.ingredient, 'ingredient', modernIngredients);
     recipe.result = result(args.result, args.count, legacy);
     recipe.experience = typeof args.experience === 'number' ? args.experience : 0.1;
     recipe.cookingtime = Number.isInteger(args.cookingTime) ? args.cookingTime : 200;
   } else if (type === 'stonecutting') {
-    recipe.ingredient = ingredient(args.ingredient, 'ingredient');
+    recipe.ingredient = ingredient(args.ingredient, 'ingredient', modernIngredients);
     recipe.result = result(args.result, args.count, legacy);
   } else if (type === 'smithing' || type === 'smithing_transform') {
-    recipe.template = ingredient(args.template, 'template');
-    recipe.base = ingredient(args.base, 'base');
-    recipe.addition = ingredient(args.addition, 'addition');
+    recipe.template = ingredient(args.template, 'template', modernIngredients);
+    recipe.base = ingredient(args.base, 'base', modernIngredients);
+    recipe.addition = ingredient(args.addition, 'addition', modernIngredients);
     recipe.result = result(args.result, args.count, legacy);
   } else {
-    recipe.template = ingredient(args.template, 'template');
-    recipe.base = ingredient(args.base, 'base');
-    recipe.addition = ingredient(args.addition, 'addition');
+    recipe.template = ingredient(args.template, 'template', modernIngredients);
+    recipe.base = ingredient(args.base, 'base', modernIngredients);
+    recipe.addition = ingredient(args.addition, 'addition', modernIngredients);
   }
   const file = path.join(dataPath(project, 'recipe'), name + '.json');
   return { ok: true, action, ...(await writeJson(file, recipe, overwrite)), recipe };

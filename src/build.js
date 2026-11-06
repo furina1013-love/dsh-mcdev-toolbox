@@ -5,8 +5,34 @@ import { detectProject } from './project.js';
 import { boundText, exists, relativeTo, walk } from './util.js';
 
 const TASK_PATTERN = /^[A-Za-z0-9_:-]{1,80}$/;
+const ALLOWED_TASKS = new Set([
+  'assemble', 'build', 'buildEnvironment', 'check', 'classes', 'clean',
+  'compileJava', 'compileTestJava', 'dependencies', 'eclipse', 'genEclipseRuns',
+  'genIntellijRuns', 'genSources', 'help', 'idea', 'jar', 'javadoc', 'projects',
+  'processResources', 'processTestResources', 'publishToMavenLocal', 'remapJar',
+  'remapSourcesJar', 'runClient', 'runClientData', 'runData', 'runDatagen',
+  'runGameTestServer', 'runServer', 'runServerData', 'sourcesJar', 'tasks', 'test',
+  'testClasses', 'wrapper'
+]);
 const ARG_PATTERN = /^[A-Za-z0-9_.:=/+-]{1,160}$/;
+const DANGEROUS_ARG = /^(?:--(?:project-dir|init-script|build-file|settings-file|gradle-user-home|include-build|project-prop|system-prop)(?:=|$)|-[IbcgPD])/;
 const ERROR_PATTERN = /^(?:e: |error: |FAILURE:|Caused by:|Execution failed for task |> Task .* FAILED|\d+ tests? failed|Exception in thread|A failure occurred)/i;
+
+/** Validate the task/argument surface before any process is spawned. */
+export function assertGradleInvocation(task, args = []) {
+  if (typeof task !== 'string' || !TASK_PATTERN.test(task)) {
+    throw new Error('task must be a Gradle task name such as build, compileJava, runData, or runClient');
+  }
+  const segments = task.replace(/^:+/, '').split(':').filter(Boolean);
+  if (segments.length === 0 || !ALLOWED_TASKS.has(segments[segments.length - 1])) {
+    throw new Error('task is not in the allowed Gradle task list: ' + task);
+  }
+  if (!Array.isArray(args) || args.length > 8) throw new Error('args must be an array of at most 8 Gradle arguments');
+  for (const arg of args) {
+    if (typeof arg !== 'string' || !ARG_PATTERN.test(arg)) throw new Error('unsupported Gradle argument: ' + String(arg));
+    if (DANGEROUS_ARG.test(arg)) throw new Error('argument can redirect the build root or load an external script: ' + arg);
+  }
+}
 
 function commandFor(root) {
   const wrapper = path.join(root, process.platform === 'win32' ? 'gradlew.bat' : 'gradlew');
@@ -57,13 +83,7 @@ async function listArtifacts(root) {
 
 /** Run one Gradle task with bounded capture and a hard timeout. */
 export async function runGradle({ cwd, task, args = [], timeoutMs = 180000, maxOutputChars = 12000 }) {
-  if (typeof task !== 'string' || !TASK_PATTERN.test(task)) {
-    throw new Error('task must be a Gradle task name such as build, compileJava, runData, or runClient');
-  }
-  if (!Array.isArray(args) || args.length > 8) throw new Error('args must be an array of at most 8 Gradle arguments');
-  for (const arg of args) {
-    if (typeof arg !== 'string' || !ARG_PATTERN.test(arg)) throw new Error('unsupported Gradle argument: ' + String(arg));
-  }
+  assertGradleInvocation(task, args);
   const project = await detectProject(cwd);
   if (!project.found) throw new Error('no Gradle project found from the session working directory');
   const wrapper = commandFor(project.root);

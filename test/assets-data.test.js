@@ -43,6 +43,7 @@ test('writes version-correct recipe files and validates', async () => {
   assert.ok(result.path.endsWith('data/testmod/recipe/ruby_block.json'));
   const recipe = JSON.parse(await fs.readFile(result.path, 'utf8'));
   assert.deepEqual(recipe.result, { id: 'testmod:ruby_block', count: 1 });
+  assert.equal(recipe.key.R, 'testmod:ruby');
   const validation = await runData({ action: 'validate' }, { cwd });
   assert.equal(validation.ok, true);
 });
@@ -80,4 +81,46 @@ test('writes legacy smithing recipes with the item result key', async () => {
   const recipe = JSON.parse(await fs.readFile(result.path, 'utf8'));
   assert.equal(recipe.type, 'minecraft:smithing');
   assert.deepEqual(recipe.result, { item: 'testmod:ruby_pickaxe', count: 1 });
+});
+
+test('rejects a locale path that escapes the lang directory', async () => {
+  const cwd = await project();
+  await assert.rejects(() => runAssets({ action: 'lang', locale: '../../evil', entries: { 'item.testmod.evil': 'Evil' } }, { cwd }), /locale must look like/);
+  await assert.rejects(() => runAssets({ action: 'lang', locale: 'en/us', entries: { 'item.testmod.evil': 'Evil' } }, { cwd }), /locale must look like/);
+});
+
+test('writes a validated locale language file', async () => {
+  const cwd = await project();
+  const result = await runAssets({ action: 'lang', locale: 'de_de', entries: { 'item.testmod.ruby': 'Rubin' } }, { cwd });
+  assert.equal(result.ok, true);
+  const lang = JSON.parse(await fs.readFile(path.join(cwd, 'src/main/resources/assets/testmod/lang/de_de.json'), 'utf8'));
+  assert.equal(lang['item.testmod.ruby'], 'Rubin');
+});
+
+test('writes legacy object ingredients before 1.20.5', async () => {
+  const cwd = await project('1.20.4');
+  const result = await runData({ action: 'recipe', name: 'ruby_block', type: 'crafting_shaped', pattern: ['RRR', 'RRR', 'RRR'], key: { R: '#c:gems' }, result: 'testmod:ruby_block' }, { cwd });
+  const recipe = JSON.parse(await fs.readFile(result.path, 'utf8'));
+  assert.deepEqual(recipe.key.R, { tag: 'c:gems' });
+  assert.deepEqual(recipe.result, { item: 'testmod:ruby_block', count: 1 });
+});
+
+test('flags legacy object ingredients nested in arrays for 1.20.5+', async () => {
+  const cwd = await project('1.21.1');
+  const recipeFile = path.join(cwd, 'src/main/resources/data/testmod/recipe/nested.json');
+  await fs.mkdir(path.dirname(recipeFile), { recursive: true });
+  await fs.writeFile(recipeFile, JSON.stringify({ type: 'minecraft:crafting_shapeless', ingredients: [[{ tag: 'c:gems' }]], result: { id: 'testmod:ruby_block', count: 1 } }));
+  const validation = await runData({ action: 'validate' }, { cwd });
+  assert.equal(validation.ok, false);
+  assert.ok(validation.errors.some((error) => error.includes('legacy')));
+});
+
+test('flags legacy object ingredients in 1.20.5+ validation', async () => {
+  const cwd = await project('1.21.1');
+  const recipeFile = path.join(cwd, 'src/main/resources/data/testmod/recipe/old.json');
+  await fs.mkdir(path.dirname(recipeFile), { recursive: true });
+  await fs.writeFile(recipeFile, JSON.stringify({ type: 'minecraft:crafting_shapeless', ingredients: [{ item: 'testmod:ruby' }], result: { id: 'testmod:ruby_block', count: 1 } }));
+  const validation = await runData({ action: 'validate' }, { cwd });
+  assert.equal(validation.ok, false);
+  assert.ok(validation.errors.some((error) => error.includes('legacy')));
 });

@@ -5,11 +5,11 @@
  */
 export function isNewConversation(session, { includeSubagents = false, source } = {}) {
   if (session === undefined || session === null) return false;
-  if (source !== undefined && source !== 'startup') return false;
+  if (source !== undefined && source !== 'startup' && source !== 'clear') return false;
   const header = session.header;
   if (header?.isSeeded === true) return false;
-  if (header?.parentSession !== undefined) return false;
-  if (header?.delegationDepth !== undefined) return false;
+  if (!includeSubagents && header?.parentSession !== undefined) return false;
+  if (!includeSubagents && header?.delegationDepth !== undefined) return false;
   if (session.inheritedEventCount !== undefined && session.inheritedEventCount !== 0) return false;
   if (!includeSubagents && header?.origin === 'subagent') return false;
   try {

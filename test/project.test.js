@@ -47,3 +47,19 @@ test('warns when pack.mcmeta format does not match the Minecraft version', async
   const validation = await validateProject(await detectProject(cwd));
   assert.ok(validation.warnings.some((warning) => warning.includes('does not match Minecraft')));
 });
+
+test('accepts client-only sources and finds client mixin classes', async () => {
+  const cwd = await fixture();
+  await fs.rm(path.join(cwd, 'src/main/java'), { recursive: true, force: true });
+  const mixinDir = path.join(cwd, 'src/client/java/com/example/testmod/mixin');
+  await fs.mkdir(mixinDir, { recursive: true });
+  await fs.writeFile(path.join(mixinDir, 'TestMixin.java'), 'package com.example.testmod.mixin; public class TestMixin {}');
+  await fs.writeFile(path.join(cwd, 'src/main/resources/testmod.mixins.json'), JSON.stringify({ package: 'com.example.testmod.mixin', client: ['TestMixin'] }));
+  await fs.writeFile(path.join(cwd, 'src/main/resources/fabric.mod.json'), JSON.stringify({ schemaVersion: 1, id: 'testmod', version: '1.0.0', entrypoints: {}, depends: { minecraft: '>=1.21', fabricloader: '>=0.16' }, mixins: [{ config: 'testmod.mixins.json' }] }));
+  const project = await detectProject(cwd);
+  assert.deepEqual(project.sourceRoots, ['src/client/java']);
+  assert.equal(project.javaFiles, 1);
+  const validation = await validateProject(project);
+  assert.equal(validation.ok, true);
+  assert.ok(!validation.warnings.some((warning) => warning.includes('mixin class source not found')));
+});

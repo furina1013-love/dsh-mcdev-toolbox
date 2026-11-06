@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { detectProject } from './project.js';
-import { exists, readJson, readTextLimited, relativeTo, walk } from './util.js';
+import { exists, readJson, readTextLimited, relativeTo, resolveInside, walk } from './util.js';
 
 async function context(cwd) {
   const project = await detectProject(cwd);
@@ -13,7 +13,9 @@ async function configs(project) {
   const resources = path.join(project.root, 'src/main/resources');
   const result = [];
   for (const name of [...new Set(project.mixinConfigs)]) {
-    const file = path.join(resources, name);
+    let file;
+    try { file = resolveInside(resources, name); }
+    catch { result.push({ name, invalid: 'config path escapes resources' }); continue; }
     if (!(await exists(file))) { result.push({ name, missing: true }); continue; }
     let json;
     try { json = await readJson(file); } catch (error) { result.push({ name, invalid: error instanceof Error ? error.message : String(error) }); continue; }
@@ -23,9 +25,13 @@ async function configs(project) {
 }
 
 async function javaSources(project) {
-  const root = path.join(project.root, 'src/main/java');
-  if (!(await exists(root))) return [];
-  return (await walk(root, { maxDepth: 12, maxFiles: 20000 })).filter((file) => file.endsWith('.java'));
+  const roots = (project.sourceRoots ?? ['src/main/java']).map((relative) => path.join(project.root, relative));
+  const files = [];
+  for (const root of roots) {
+    if (!(await exists(root))) continue;
+    files.push(...(await walk(root, { maxDepth: 12, maxFiles: 20000 })).filter((file) => file.endsWith('.java')));
+  }
+  return files;
 }
 
 function packagePath(packageName, className) {
@@ -64,13 +70,18 @@ export async function runMixin(args, { cwd } = {}) {
   const errors = [];
   const warnings = [];
   const resources = path.join(project.root, 'src/main/resources');
-  const javaRoot = path.join(project.root, 'src/main/java');
+  const javaRoots = (project.sourceRoots ?? ['src/main/java']).map((relative) => path.join(project.root, relative));
   for (const entry of configEntries) {
     if (entry.missing) { errors.push('mixin config not found: ' + entry.name); continue; }
     if (entry.invalid !== undefined) { errors.push(entry.name + ': invalid JSON: ' + entry.invalid); continue; }
     const json = entry.json;
     if (typeof json.package !== 'string' || !/^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*$/.test(json.package)) errors.push(entry.name + ': package is invalid');
-    if (json.refmap !== undefined && (typeof json.refmap !== 'string' || !(await exists(path.join(resources, json.refmap))))) warnings.push(entry.name + ': refmap file not found: ' + String(json.refmap));
+    if (json.refmap !== undefined) {
+      let refmap;
+      try { refmap = typeof json.refmap === 'string' ? resolveInside(resources, json.refmap) : undefined; }
+      catch { refmap = undefined; }
+      if (refmap === undefined || !(await exists(refmap))) warnings.push(entry.name + ': refmap file not found: ' + String(json.refmap));
+    }
     for (const key of ['mixins', 'client', 'server']) {
       const values = json[key];
       if (values === undefined) continue;
@@ -78,7 +89,11 @@ export async function runMixin(args, { cwd } = {}) {
       for (const className of values) {
         if (typeof className !== 'string') { errors.push(entry.name + ': ' + key + ' entries must be strings'); continue; }
         const rel = packagePath(json.package, className);
-        if (!(await exists(path.join(javaRoot, rel)))) warnings.push(entry.name + ': mixin source not found: ' + rel);
+        let found = false;
+        for (const root of javaRoots) {
+          if (await exists(path.join(root, rel))) { found = true; break; }
+        }
+        if (!found) warnings.push(entry.name + ': mixin source not found: ' + rel);
       }
     }
   }

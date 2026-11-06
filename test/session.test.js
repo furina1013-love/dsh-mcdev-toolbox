@@ -22,3 +22,16 @@ test('surface history is treated as old', () => {
 test('turn history without a header is treated as old', () => {
   assert.equal(isNewConversation({ header: {}, requestHeader: () => undefined, snapshotEvents: () => [{ type: 'turn/start' }] }), false);
 });
+
+test('clear source is treated as new when history is empty', () => {
+  const empty = { header: {}, requestHeader: () => undefined, snapshotEvents: () => [] };
+  assert.equal(isNewConversation(empty, { source: 'clear' }), true);
+  assert.equal(isNewConversation({ ...empty, requestHeader: () => ({ config: {} }) }, { source: 'clear' }), false);
+  assert.equal(isNewConversation(empty, { source: 'compact' }), false);
+});
+
+test('parent and delegation checks are gated by includeSubagents', () => {
+  const child = { header: { parentSession: 'parent', delegationDepth: 1 }, requestHeader: () => undefined, snapshotEvents: () => [] };
+  assert.equal(isNewConversation(child), false);
+  assert.equal(isNewConversation(child, { includeSubagents: true }), true);
+});

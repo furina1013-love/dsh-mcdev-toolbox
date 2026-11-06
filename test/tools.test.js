@@ -10,10 +10,15 @@ test('group catalog is complete and unique', () => {
   for (const group of GROUP_NAMES) assert.ok(GROUPS[group].tools.length > 0);
 });
 
-test('control tool exposes only small control schema', () => {
+test('control tool exposes compiled small control schema', () => {
   const tool = controlTool({ activate: () => ({}), deactivate: () => ({}), status: () => ({}) });
   assert.equal(tool.name, 'mcdev_toolbox');
-  assert.deepEqual(Object.keys(tool.parameters).sort(), ['action', 'groups', 'reason']);
+  assert.equal(tool.parameters.type, 'object');
+  assert.deepEqual(Object.keys(tool.parameters.properties).sort(), ['action', 'groups', 'reason']);
+  assert.deepEqual(tool.parameters.required, ['action']);
+  assert.equal(tool.parameters.properties.action.type, 'string');
+  assert.equal(tool.parameters.properties.action.required, undefined);
+  assert.deepEqual(tool.parameters.properties.action.enum, ['activate', 'deactivate', 'status']);
 });
 
 test('group tool factories produce unique valid definitions', () => {
@@ -26,5 +31,17 @@ test('group tool factories produce unique valid definitions', () => {
     assert.equal(typeof tool.description, 'string');
     assert.equal(typeof tool.execute, 'function');
     assert.equal(typeof tool.output.schema, 'object');
+    assert.equal(tool.parameters.type, 'object');
+    assert.equal(typeof tool.parameters.properties, 'object');
+    assert.equal(tool.parameters.additionalProperties, false);
+    for (const [name, property] of Object.entries(tool.parameters.properties)) {
+      assert.equal(typeof property, 'object', name);
+      assert.equal(property.required, undefined, name + ' must not retain author-only required');
+      assert.ok(typeof property.description === 'string' || property.type !== undefined, name);
+    }
   }
+  const data = all.find((tool) => tool.name === 'mcdev_data');
+  assert.equal(data.parameters.properties.ingredients.items.oneOf.length, 2);
+  assert.equal(data.parameters.properties.ingredients.items.oneOf[0].type, 'string');
+  assert.deepEqual(data.parameters.properties.values.items.oneOf[1].required, ['id']);
 });

@@ -9,6 +9,8 @@ test('version profiles switch Java at 1.20.5', () => {
 });
 test('recipe result key and data folders switch at the correct versions', () => {
   assert.equal(versionProfile('1.20.4').resultKey, 'item');
+  assert.equal(versionProfile('1.20.4').ingredientStyle, 'object');
+  assert.equal(versionProfile('1.20.5').ingredientStyle, 'string');
   assert.equal(versionProfile('1.20.5').resultKey, 'id');
   assert.equal(versionProfile('1.20.4').dataDirStyle, 'plural');
   assert.equal(versionProfile('1.21.0').dataDirStyle, 'singular');

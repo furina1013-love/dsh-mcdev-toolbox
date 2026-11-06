@@ -18,7 +18,7 @@ export function resolveConfig(raw = {}) {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) throw new TypeError('mcdev-toolbox config must be an object');
   return Object.freeze({
     enabled: raw.enabled === undefined ? DEFAULTS.enabled : Boolean(raw.enabled),
-    maxOutputChars: positiveInteger(raw.maxOutputChars, DEFAULTS.maxOutputChars, 'maxOutputChars', 2000, 60000),
+    maxOutputChars: positiveInteger(raw.maxOutputChars, DEFAULTS.maxOutputChars, 'maxOutputChars', 2000, 16000),
     gradleTimeoutMs: positiveInteger(raw.gradleTimeoutMs, DEFAULTS.gradleTimeoutMs, 'gradleTimeoutMs', 5000, 900000),
     includeSubagents: raw.includeSubagents === undefined ? DEFAULTS.includeSubagents : Boolean(raw.includeSubagents)
   });

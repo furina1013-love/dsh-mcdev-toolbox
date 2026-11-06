@@ -134,7 +134,10 @@ export async function apply(ctx, rawConfig) {
     Promise.resolve(fiber.dispose?.()).catch((error) => logger.warn('mcdev-toolbox: scoped dispose failed: ' + String(error)));
   });
   try {
-    for (const agent of ctx.agents.list()) install(agent, undefined);
+    for (const agent of ctx.agents.list()) {
+      try { install(agent, undefined); }
+      catch (error) { logger.warn('mcdev-toolbox: reconcile skip: ' + (error instanceof Error ? error.message : String(error))); }
+    }
   } catch (error) {
     logger.warn('mcdev-toolbox: startup reconcile failed: ' + (error instanceof Error ? error.message : String(error)));
   }

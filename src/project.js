@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { exists, parseKeyValueProperties, readJson, readTextLimited, relativeTo, walk } from './util.js';
+import { exists, parseKeyValueProperties, readJson, readTextLimited, relativeTo, resolveInside, walk } from './util.js';
 import { versionProfile } from './version.js';
 
 const BUILD_FILES = ['build.gradle', 'build.gradle.kts'];
@@ -122,11 +122,14 @@ export async function detectProject(cwd) {
   const modsMeta = neoforgeText ?? modsText;
   const tomlMod = modsMeta === undefined ? {} : parseModsToml(modsMeta);
   const modId = fabricMeta?.id ?? tomlMod.modId;
-  const sourceJava = path.join(root, 'src/main/java');
+  const sourceRoots = [];
   let javaFiles = 0;
-  if (await exists(sourceJava)) {
-    const files = await walk(sourceJava, { maxDepth: 8, maxFiles: 6000 });
-    javaFiles = files.filter((file) => file.endsWith('.java')).length;
+  for (const relative of ['src/main/java', 'src/client/java']) {
+    const sourceRoot = path.join(root, relative);
+    if (!(await exists(sourceRoot))) continue;
+    sourceRoots.push(relative);
+    const files = await walk(sourceRoot, { maxDepth: 8, maxFiles: 6000 });
+    javaFiles += files.filter((file) => file.endsWith('.java')).length;
   }
   const mixinConfigs = [];
   for (const entry of Array.isArray(fabricMeta?.mixins) ? fabricMeta.mixins : []) {
@@ -165,6 +168,7 @@ export async function detectProject(cwd) {
     gradleWrapper: await exists(path.join(root, process.platform === 'win32' ? 'gradlew.bat' : 'gradlew')),
     metadataFiles,
     mixinConfigs: [...new Set(mixinConfigs)],
+    sourceRoots,
     javaFiles,
     properties: Object.fromEntries(props),
     warnings
@@ -195,7 +199,9 @@ async function validateMixins(root, project, errors, warnings) {
   const resources = path.join(root, 'src/main/resources');
   const configs = [...new Set(project.mixinConfigs)];
   for (const name of configs) {
-    const file = path.join(resources, name);
+    let file;
+    try { file = resolveInside(resources, name); }
+    catch { errors.push('mixin config escapes resources: ' + name); continue; }
     if (!(await exists(file))) {
       errors.push('mixin config not found: ' + name);
       continue;
@@ -208,8 +214,12 @@ async function validateMixins(root, project, errors, warnings) {
       if (!Array.isArray(json[key])) { errors.push(name + ': ' + key + ' must be an array'); continue; }
       for (const className of json[key]) {
         if (typeof className !== 'string') { errors.push(name + ': ' + key + ' entries must be strings'); continue; }
-        const javaFile = path.join(root, 'src/main/java', ...(json.package + '.' + className).split('.')) + '.java';
-        if (!(await exists(javaFile))) warnings.push(name + ': mixin class source not found: ' + json.package + '.' + className);
+        const relative = (json.package + '.' + className).split('.').join('/') + '.java';
+        let found = false;
+        for (const sourceRoot of project.sourceRoots ?? ['src/main/java']) {
+          if (await exists(path.join(root, sourceRoot, relative))) { found = true; break; }
+        }
+        if (!found) warnings.push(name + ': mixin class source not found: ' + json.package + '.' + className);
       }
     }
   }
@@ -244,7 +254,7 @@ export async function validateProject(project) {
   } else if (project.loader !== 'unknown') {
     warnings.push('src/main/resources/pack.mcmeta is missing');
   }
-  if (!(await exists(path.join(root, 'src/main/java')))) errors.push('src/main/java is missing');
+  if (project.sourceRoots.length === 0) errors.push('no Java source root found (src/main/java or src/client/java)');
   if (project.loader !== 'unknown' && project.minecraftVersion !== undefined && project.javaVersion !== undefined) {
     const required = String(versionProfile(project.minecraftVersion).java ?? '');
     if (required !== undefined && Number(project.javaVersion) < Number(required)) {
