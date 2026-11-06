@@ -52,7 +52,7 @@ Minecraft 模组开发常用工具不少，但一个对话通常只需要其中�
 }
 ```
 
-或通过 `cords` CLI/Plugin Manager 安装本地 bundle。安装后从**新对话**开始生效。
+或通过 `cords` CLI/Plugin Manager 安装本地 bundle。当前 web profile 的 `patchReload` 是 `startup`，因此安装/更新后需要**重启 Harness**；重启后从**新对话**开始生效，旧会话不变。
 
 ## 配置
 

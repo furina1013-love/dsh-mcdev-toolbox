@@ -126,7 +126,7 @@ export function groupTools({ ctx, config }) {
         displayName: { type: 'string', description: 'English display name for the generated lang key.' },
         lang: { type: 'boolean', description: 'For item/block: update en_us.json (default true).' },
         locale: { type: 'string', description: 'For action=lang: locale file name, default en_us.' },
-        entries: { type: 'object', additionalProperties: { type: 'string' }, description: 'For action=lang: translation key to text.' },
+        entries: { type: 'object', additionalProperties: true, description: 'For action=lang: an object mapping translation keys to strings.' },
         overwrite: { type: 'boolean', description: 'Overwrite existing JSON files (default false).' }
       }, async (args, exec) => runAssets(args, { cwd: await cwdOf(exec), maxOutputChars: config.maxOutputChars }))
     ],
