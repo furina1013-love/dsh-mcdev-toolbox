@@ -188,9 +188,11 @@ export async function runData(args, { cwd } = {}) {
     if (args.key === null || typeof args.key !== 'object' || Array.isArray(args.key)) throw new Error('key must be an object of character to ingredient');
     recipe.pattern = args.pattern;
     recipe.key = Object.fromEntries(Object.entries(args.key).map(([char, value]) => [char, ingredient(value, 'key.' + char)]));
+    recipe.result = result(args.result, args.count, legacy);
   } else if (type === 'crafting_shapeless') {
     if (!Array.isArray(args.ingredients) || args.ingredients.length === 0) throw new Error('ingredients must be a non-empty array');
     recipe.ingredients = args.ingredients.map((value, index) => ingredient(value, 'ingredients[' + index + ']'));
+    recipe.result = result(args.result, args.count, legacy);
   } else if (COOKING.has(type)) {
     recipe.ingredient = ingredient(args.ingredient, 'ingredient');
     recipe.result = result(args.result, args.count, legacy);
