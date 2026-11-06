@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Minecraft Modding Toolbox">
+  <rect width="64" height="64" rx="14" fill="#1f2a1b"/>
+  <path d="M8 30 32 17l24 13v21L32 64 8 51Z" fill="#6b4b2a"/>
+  <path d="M8 30 32 17l24 13-24 13Z" fill="#73a64b"/>
+  <path d="M32 43v21L8 51V30Z" fill="#8a6238"/>
+  <path d="M32 43v21l24-13V30Z" fill="#5f8f3e"/>
+  <path d="M18 32.5 32 25l14 7.5-14 7Z" fill="#a7d46a"/>
+  <circle cx="46" cy="45" r="9" fill="#d9e6f2" stroke="#3d5266" stroke-width="3"/>
+  <path d="M46 39v7l5 4" fill="none" stroke="#3d5266" stroke-width="3" stroke-linecap="round"/>
+</svg>

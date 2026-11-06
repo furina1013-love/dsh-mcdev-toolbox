@@ -1,0 +1,9 @@
+# Minecraft modding toolbox: new sessions only, tools activated on demand.
+- insert:
+    - id: mcdev-toolbox
+      name: '@local/dsh-mcdev-toolbox'
+      config:
+        enabled: true
+        maxOutputChars: 12000
+        gradleTimeoutMs: 180000
+        includeSubagents: false

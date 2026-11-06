@@ -1,0 +1,41 @@
+{
+  "name": "@local/dsh-mcdev-toolbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "On-demand Minecraft Java mod-development tools for DeepSeek Harness new sessions.",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "minecraft",
+    "fabric",
+    "neoforge",
+    "modding"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "src/*.js",
+    "src/tools/*.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0",
+    "dsh": ">=0.2.0-0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
