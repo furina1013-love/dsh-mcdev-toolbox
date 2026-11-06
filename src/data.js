@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { detectProject } from './project.js';
 import { exists, readJson, relativeTo, resolveInside, walk } from './util.js';
+import { versionProfile } from './version.js';
 
 const ID_PATTERN = /^[a-z0-9_.-]+:[a-z0-9_./-]+$/;
 const TAG_PATTERN = /^[a-z0-9_.-]+:[a-z0-9_./-]+$/;
@@ -28,7 +29,11 @@ function ingredient(value, label) {
     }
     return { item: id(value, label) };
   }
-  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+  if (Array.isArray(value)) {
+    if (value.length === 0) throw new Error(label + ' must not be an empty ingredient array');
+    return value.map((entry, index) => ingredient(entry, label + '[' + index + ']'));
+  }
+  if (value !== null && typeof value === 'object') {
     const copy = {};
     if (typeof value.item === 'string') copy.item = id(value.item, label + '.item');
     else if (typeof value.tag === 'string') copy.tag = value.tag.replace(/^#/, '');
@@ -59,8 +64,21 @@ async function context(cwd) {
 }
 
 function modern(project) {
-  const match = /^1\.(\d+)/.exec(project.minecraftVersion ?? '');
-  return match !== null && Number(match[1]) >= 21;
+  return versionProfile(project.minecraftVersion).dataDirStyle === 'singular';
+}
+
+function legacyResult(project) {
+  return versionProfile(project.minecraftVersion).resultKey === 'item';
+}
+
+function tagFolder(project, kind) {
+  const singular = modern(project);
+  if (kind === 'entity_type') return singular ? 'entity_type' : 'entity_types';
+  if (kind === 'game_event') return singular ? 'game_event' : 'game_events';
+  if (kind === 'function') return singular ? 'function' : 'functions';
+  if (kind === 'fluid') return singular ? 'fluid' : 'fluids';
+  if (kind === 'block') return singular ? 'block' : 'blocks';
+  return singular ? 'item' : 'items';
 }
 
 function dataPath(project, kind) {
@@ -83,7 +101,12 @@ function validateIngredient(value, label, errors) {
     else if (!ID_PATTERN.test(value)) errors.push(label + ': invalid item id ' + value);
     return;
   }
-  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+  if (Array.isArray(value)) {
+    if (value.length === 0) errors.push(label + ': ingredient array must not be empty');
+    else value.forEach((entry, index) => validateIngredient(entry, label + '[' + index + ']', errors));
+    return;
+  }
+  if (value !== null && typeof value === 'object') {
     const name = value.item ?? value.tag;
     if (typeof name !== 'string' || !ID_PATTERN.test(name)) errors.push(label + ': needs a valid item or tag');
     return;
@@ -110,9 +133,10 @@ export async function runData(args, { cwd } = {}) {
       try { json = await readJson(file); } catch { errors.push(rel + ': invalid JSON'); continue; }
       if (json === null || typeof json !== 'object' || Array.isArray(json)) { errors.push(rel + ': recipe must be an object'); continue; }
       const type = String(json.type ?? '').replace(/^minecraft:/, '');
-      if (!RECIPE_TYPES.has(type)) { errors.push(rel + ': unknown recipe type ' + String(json.type)); continue; }
+      if (!RECIPE_TYPES.has(type)) { warnings.push(rel + ': unknown or modded recipe type ' + String(json.type) + '; basic checks skipped'); continue; }
       if (type === 'crafting_shaped') {
         if (!Array.isArray(json.pattern) || json.pattern.length === 0 || json.pattern.length > 3 || json.pattern.some((row) => typeof row !== 'string' || row.length === 0 || row.length > 3)) errors.push(rel + ': pattern must be 1-3 rows of 1-3 characters');
+        else if (new Set(json.pattern.map((row) => row.length)).size > 1) errors.push(rel + ': all pattern rows must have the same width');
         if (json.key === null || typeof json.key !== 'object' || Array.isArray(json.key)) errors.push(rel + ': key must be an object');
         else for (const [char, value] of Object.entries(json.key)) { if (char.length !== 1) errors.push(rel + ': key must be one character'); validateIngredient(value, rel + ' key ' + char, errors); }
       } else if (type === 'crafting_shapeless') {
@@ -126,8 +150,11 @@ export async function runData(args, { cwd } = {}) {
         for (const key of ['template', 'base', 'addition']) validateIngredient(json[key], rel + ' ' + key, errors);
       }
       if (type !== 'smithing_trim') {
+        const expected = versionProfile(project.minecraftVersion).resultKey;
+        const actual = json.result?.id !== undefined ? 'id' : json.result?.item !== undefined ? 'item' : undefined;
         const value = json.result?.id ?? json.result?.item;
         if (typeof value !== 'string' || !ID_PATTERN.test(value)) errors.push(rel + ': result id is missing or invalid');
+        else if (actual !== undefined && actual !== expected) errors.push(rel + ': result uses "' + actual + '", expected "' + expected + '" for Minecraft ' + String(project.minecraftVersion));
       }
     }
     const tagFiles = files.filter((file) => /\/tags\//.test(file) && file.endsWith('.json'));
@@ -160,7 +187,8 @@ export async function runData(args, { cwd } = {}) {
       if (entry !== null && typeof entry === 'object' && typeof entry.id === 'string') return { id: entry.id, ...(entry.required === false ? { required: false } : {}) };
       throw new Error('values[' + index + '] must be an id or {id, required}');
     });
-    const file = resolveInside(path.join(project.root, 'src/main/resources/data', tagNs, 'tags', kind), tagPath + '.json');
+    if (tagPath.includes('..')) throw new Error('tag path must not contain ..');
+    const file = resolveInside(path.join(project.root, 'src/main/resources/data', tagNs, 'tags'), tagFolder(project, kind) + '/' + tagPath + '.json');
     return { ok: true, action, ...(await writeJson(file, { replace: Boolean(args.replace), values }, overwrite)) };
   }
 
@@ -179,7 +207,7 @@ export async function runData(args, { cwd } = {}) {
   const name = clean(args.name, 'name');
   const type = String(args.type ?? '').replace(/^minecraft:/, '');
   if (!RECIPE_TYPES.has(type)) throw new Error('unsupported recipe type: ' + String(args.type));
-  const legacy = !modern(project);
+  const legacy = legacyResult(project);
   const recipe = { type: 'minecraft:' + type };
   if (typeof args.group === 'string' && args.group !== '') recipe.group = args.group;
   if (typeof args.category === 'string' && args.category !== '') recipe.category = args.category;

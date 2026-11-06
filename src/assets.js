@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { detectProject } from './project.js';
 import { exists, readJson, relativeTo, resolveInside, walk } from './util.js';
+import { versionProfile } from './version.js';
 
 const NAME_PATTERN = /^[a-z0-9_./-]+$/;
 const NAMESPACE_PATTERN = /^[a-z0-9_.-]{2,64}$/;
@@ -58,17 +59,6 @@ function itemDefinition(model, ns, name) {
 
 function blockItemDefinition(model, ns, name) {
   return { model: { type: 'minecraft:model', model: ns + ':block/' + name } };
-}
-
-function atLeastVersion(project, major, minor, patch) {
-  const match = /^(\d+)\.(\d+)(?:\.(\d+))?/.exec(project.minecraftVersion ?? '');
-  if (match === null) return false;
-  const current = [Number(match[1]), Number(match[2]), Number(match[3] ?? 0)];
-  const wanted = [major, minor, patch];
-  for (let index = 0; index < 3; index += 1) {
-    if (current[index] !== wanted[index]) return current[index] > wanted[index];
-  }
-  return true;
 }
 
 /** Validate models, blockstates and language files; create item/block assets on request. */
@@ -164,7 +154,7 @@ export async function runAssets(args, { cwd, maxOutputChars = 12000 } = {}) {
     const texture = typeof args.texture === 'string' && args.texture !== '' ? args.texture : ns + ':item/' + name;
     const modelPath = resolveInside(assetsRoot, 'models/item/' + name + '.json');
     files.push(await writeJson(modelPath, { parent: 'minecraft:item/generated', textures: { layer0: texture } }, overwrite));
-    if (atLeastVersion(project, 1, 21, 4)) {
+    if (versionProfile(project.minecraftVersion).itemDefinitions) {
       files.push(await writeJson(resolveInside(assetsRoot, 'items/' + name + '.json'), itemDefinition(name, ns, name), overwrite));
     }
   } else {
@@ -172,7 +162,7 @@ export async function runAssets(args, { cwd, maxOutputChars = 12000 } = {}) {
     files.push(await writeJson(resolveInside(assetsRoot, 'models/block/' + name + '.json'), { parent: 'minecraft:block/cube_all', textures: { all: texture } }, overwrite));
     files.push(await writeJson(resolveInside(assetsRoot, 'blockstates/' + name + '.json'), { variants: { '': { model: ns + ':block/' + name } } }, overwrite));
     files.push(await writeJson(resolveInside(assetsRoot, 'models/item/' + name + '.json'), { parent: ns + ':block/' + name }, overwrite));
-    if (atLeastVersion(project, 1, 21, 4)) {
+    if (versionProfile(project.minecraftVersion).itemDefinitions) {
       files.push(await writeJson(resolveInside(assetsRoot, 'items/' + name + '.json'), blockItemDefinition(name, ns, name), overwrite));
     }
   }

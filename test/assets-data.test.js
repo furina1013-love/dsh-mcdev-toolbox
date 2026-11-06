@@ -51,5 +51,5 @@ test('writes a tag file under the requested namespace', async () => {
   const cwd = await project('1.20.1');
   const result = await runData({ action: 'tag', tag: 'minecraft:planks', values: ['testmod:ruby'] }, { cwd });
   assert.equal(result.ok, true);
-  assert.ok(result.path.endsWith('data/minecraft/tags/item/planks.json'));
+  assert.ok(result.path.endsWith('data/minecraft/tags/items/planks.json'));
 });

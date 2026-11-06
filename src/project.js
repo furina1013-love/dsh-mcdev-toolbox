@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { exists, parseKeyValueProperties, readJson, readTextLimited, relativeTo, walk } from './util.js';
+import { versionProfile } from './version.js';
 
 const BUILD_FILES = ['build.gradle', 'build.gradle.kts'];
 const SETTINGS_FILES = ['settings.gradle', 'settings.gradle.kts'];
@@ -45,14 +46,7 @@ function firstMatch(text, patterns) {
 }
 
 function inferJavaVersion(minecraftVersion) {
-  if (minecraftVersion === undefined) return undefined;
-  const match = /^1\.(\d+)/.exec(minecraftVersion);
-  if (match === null) return undefined;
-  const minor = Number(match[1]);
-  if (minor >= 21) return '21';
-  if (minor >= 18) return '17';
-  if (minor >= 17) return '16';
-  return '8';
+  return versionProfile(minecraftVersion).java === undefined ? undefined : String(versionProfile(minecraftVersion).java);
 }
 
 function parseFabricMeta(json) {
@@ -148,10 +142,15 @@ export async function detectProject(cwd) {
   for (const file of [fabricFile, neoforgeFile, modsFile]) {
     if (await exists(file)) metadataFiles.push(relativeTo(root, file));
   }
+  const profile = versionProfile(minecraftVersion);
   const warnings = [];
   if (loader === 'unknown') warnings.push('Could not identify Fabric/NeoForge/Forge from build files or metadata.');
   if (minecraftVersion === undefined) warnings.push('Could not read the Minecraft version.');
+  else if (!profile.known) warnings.push('Unknown Minecraft version profile: ' + minecraftVersion + '; version-specific checks may be approximate.');
   if (modId === undefined) warnings.push('Could not read the mod id.');
+  if (loader === 'neoforge' && profile.neoforgeMeta === null) warnings.push('NeoForge is not available for Minecraft 1.20.1; use Forge or a newer Minecraft version.');
+  if (loader === 'neoforge' && profile.neoforgeMeta !== undefined && modsMeta !== undefined && neoforgeText === undefined && profile.neoforgeMeta === 'neoforge.mods.toml') warnings.push('NeoForge on this Minecraft version expects META-INF/neoforge.mods.toml, not mods.toml.');
+  if (loader === 'neoforge' && neoforgeText !== undefined && profile.neoforgeMeta === 'mods.toml') warnings.push('NeoForge on this Minecraft version expects META-INF/mods.toml, not neoforge.mods.toml.');
   return {
     found: true,
     root,
@@ -159,6 +158,7 @@ export async function detectProject(cwd) {
     minecraftVersion,
     mappings,
     javaVersion,
+    versionProfile: profile,
     modId,
     buildFile: buildFile === undefined ? undefined : relativeTo(root, buildFile),
     settingsFile: settingsFile === undefined ? undefined : relativeTo(root, settingsFile),
@@ -241,7 +241,7 @@ export async function validateProject(project) {
   }
   if (!(await exists(path.join(root, 'src/main/java')))) errors.push('src/main/java is missing');
   if (project.loader !== 'unknown' && project.minecraftVersion !== undefined && project.javaVersion !== undefined) {
-    const required = inferJavaVersion(project.minecraftVersion);
+    const required = String(versionProfile(project.minecraftVersion).java ?? '');
     if (required !== undefined && Number(project.javaVersion) < Number(required)) {
       warnings.push('Java ' + project.javaVersion + ' may be too old for Minecraft ' + project.minecraftVersion + ' (expected Java ' + required + ')');
     }

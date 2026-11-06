@@ -115,8 +115,8 @@ export async function apply(ctx, rawConfig) {
   };
   const installs = new Map();
 
-  function install(agent) {
-    if (!isNewConversation(agent.session, { includeSubagents: config.includeSubagents })) return;
+  function install(agent, source) {
+    if (!isNewConversation(agent.session, { includeSubagents: config.includeSubagents, source })) return;
     if (installs.has(agent)) return;
     const fiber = agent.ctx.inject(['tools', 'systemPrompt', 'workingDirectory'], (scoped) => {
       installScoped(scoped, config, logger);
@@ -124,8 +124,8 @@ export async function apply(ctx, rawConfig) {
     installs.set(agent, fiber);
   }
 
-  ctx.on('agent/created', async ({ agent }) => {
-    try { install(agent); }
+  ctx.on('agent/created', async ({ agent, source }) => {
+    try { install(agent, source); }
     catch (error) { logger.warn('mcdev-toolbox: failed to install on new Agent: ' + (error instanceof Error ? error.message : String(error))); }
   });
   ctx.on('agent/disposed', ({ agent }) => {
