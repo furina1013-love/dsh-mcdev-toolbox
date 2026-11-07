@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-mcdev-toolbox",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "description": "On-demand Minecraft Java mod-development tools for DeepSeek Harness new sessions.",

@@ -1,6 +1,6 @@
 # dsh-mcdev-toolbox
 
-> 面向 **Minecraft Java Edition** 模组开发的 DeepSeek Harness Host 插件：新对话里只暴露一个很小的控制工具；AI 判断任务确实与 MC 模组开发有关后，再按需激活项目、资源、数据、代码、诊断五组工具。工具在**下一次请求**由 DSH 追加到会话末尾，旧会话和已恢复会话不会被修改。
+> 面向 **Minecraft Java Edition** 模组开发的 DeepSeek Harness Host 插件：新对话里只暴露一个很小的控制工具；AI 判断任务确实与 MC 模组开发有关后，再按需激活项目、资源、数据、代码、诊断五组工具。工具在**下一次请求**由 DSH 追加到会话末尾，旧会话和已恢复会话默认不会被修改（除非显式开启 `includeExistingSessions`）。
 
 支持 Fabric、NeoForge、Forge 和 Architectury 项目。所有工具只读写本地项目文件、JAR、JDK、Gradle wrapper 和本地映射缓存，不联网、不上传源码。
 
@@ -13,7 +13,7 @@
 - **显式工程路径**：所有工程工具都接受可选 `projectDir`，会话工作目录不是工程根目录、或需要操作另一个工程时可直接指定绝对路径或会话相对路径。
 - **可创建工程**：`mcdev_project action=init` 生成最小 Fabric 工程（Gradle 配置、`fabric.mod.json`、`pack.mcmeta`、入口类），默认拒绝覆盖已有文件；NeoForge/Forge 请使用官方 MDK。
 - **Gradle 默认任务**：`mcdev_build` 不传 `task` 时默认运行 `build`，仍只允许白名单任务。
-- **新会话隔离**：插件安装、升级或恢复旧会话时，不会给已有历史补工具或提示词。
+- **新会话隔离**：插件安装、升级或恢复旧会话时，默认不会给已有历史补工具或提示词；确有需要时可显式开启 `includeExistingSessions`。
 - **版本感知**：根据 `gradle.properties`、`fabric.mod.json`、`mods.toml` 等文件识别 Minecraft 版本，自动切换 Java 版本、数据包目录、配方结果键、ingredient 格式和 1.21.4+ item model definition。
 - **本地优先**：不启动 Minecraft，不访问网络；静态检查 + Gradle 构建辅助，最终仍以游戏内测试为准。
 - **JAR 逆向辅助**：`mcdev_jar` 可读取项目构建产物或依赖 JAR 的 manifest、Fabric/Forge/NeoForge 元数据、条目和 class 结构；class 结构无需 JDK，`disassemble` 需要本机 `javap`。
@@ -112,10 +112,24 @@ git clone git@github.com:furina1013-love/dsh-mcdev-toolbox.git
 插件在 `agent/created` 时检查 Session：
 
 - 创建来源是 `startup` 或 `clear`，且没有模型请求、没有 `turn/start`、不是 fork/seed、不是 subagent（默认）→ **新对话**，安装控制工具和一段简短指引。
-- 已有模型请求、已 fork、已 seed、来源是 `compact`/`resume` 等，或 `includeSubagents=false` 的 subagent → **完全跳过**，不注册工具、不添加提示文本。
-- `parentSession`、`delegationDepth`、`origin=subagent` 的检查只在 `includeSubagents=true` 时放行；`isSeeded` 始终跳过。
+- 已有模型请求、已 fork、已 seed、来源是 `compact`/`resume` 等，或 `includeSubagents=false` 的 subagent → 默认**完全跳过**，不注册工具、不添加提示文本。
+- `parentSession`、`delegationDepth`、`origin=subagent` 的检查只在 `includeSubagents=true` 时放行；`isSeeded` 在默认模式下跳过，开启 `includeExistingSessions` 后不再按“新会话”判断。
 
-因此插件安装或升级不会改写旧会话，恢复旧会话也不会出现工具被追加到旧历史的情况。
+因此默认安装或升级不会改写旧会话，恢复旧会话也不会出现工具被追加到旧历史的情况。
+
+### 让旧会话使用新版本
+
+默认行为保持不变。若确实要在已恢复的旧会话里使用当前版本，可在 profile 配置中显式开启：
+
+```yaml
+- insert:
+    - id: mcdev-toolbox
+      name: '@local/dsh-mcdev-toolbox'
+      config:
+        includeExistingSessions: true
+```
+
+重启 Harness 后重新打开旧会话，插件会给它注册 `mcdev_toolbox` 和指引；工具会在下一次请求以 tool addition 追加到该会话已有历史末尾，指引进入系统提示。代价是旧会话被实际改写、请求前缀缓存可能失效，并且所有被恢复的旧会话都会多出这个控制工具。未开启时依旧完全跳过。子代理仍由 `includeSubagents` 单独控制。
 
 ## 版本适配
 
@@ -141,6 +155,7 @@ git clone git@github.com:furina1013-love/dsh-mcdev-toolbox.git
 | `maxOutputChars` | `12000` | 单个工具结果的字符上限，运行时限制在 2000–16000。 |
 | `gradleTimeoutMs` | `180000` | 单次 Gradle 任务的硬超时，运行时限制在 5 秒–15 分钟。 |
 | `includeSubagents` | `false` | 是否也为新 subagent 会话安装；默认关闭，避免每个子代理都带 MC 指引。 |
+| `includeExistingSessions` | `false` | 是否也给已恢复的旧会话安装控制工具和指引；开启会改写旧历史，默认关闭。 |
 
 示例：
 
@@ -153,6 +168,7 @@ git clone git@github.com:furina1013-love/dsh-mcdev-toolbox.git
         maxOutputChars: 12000
         gradleTimeoutMs: 180000
         includeSubagents: false
+        includeExistingSessions: false
 ```
 
 ## 开发
@@ -163,7 +179,7 @@ cd dsh-mcdev-toolbox
 npm test
 ```
 
-测试不依赖真实 Minecraft 或 Gradle，使用临时目录构造 Fabric 项目、资源、配方、mixin、mapping 和日志 fixture。当前覆盖 **61 个 `node:test` 用例**，包括工具 schema 形状、新/旧会话判定、locale 路径穿越、Gradle 参数拒绝、1.20.4/1.20.5+ ingredient 格式、模型环检测、client-only 源码根、子目录/嵌套工程发现、显式 `projectDir` 与越界路径、初始化路径安全、JAR/class 解析和日志尾部截断。
+测试不依赖真实 Minecraft 或 Gradle，使用临时目录构造 Fabric 项目、资源、配方、mixin、mapping 和日志 fixture。当前覆盖 **63 个 `node:test` 用例**，包括工具 schema 形状、新/旧会话判定、旧会话显式加载、locale 路径穿越、Gradle 参数拒绝、1.20.4/1.20.5+ ingredient 格式、模型环检测、client-only 源码根、子目录/嵌套工程发现、显式 `projectDir` 与越界路径、初始化路径安全、JAR/class 解析和日志尾部截断。
 
 ### 目录
 

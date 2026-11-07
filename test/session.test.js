@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isNewConversation } from '../src/session.js';
+import { isNewConversation, shouldInstallTools } from '../src/session.js';
 
 test('fresh session is new', () => {
   assert.equal(isNewConversation({ header: {}, requestHeader: () => undefined, snapshotEvents: () => [] }), true);
@@ -34,4 +34,15 @@ test('parent and delegation checks are gated by includeSubagents', () => {
   const child = { header: { parentSession: 'parent', delegationDepth: 1 }, requestHeader: () => undefined, snapshotEvents: () => [] };
   assert.equal(isNewConversation(child), false);
   assert.equal(isNewConversation(child, { includeSubagents: true }), true);
+});
+
+test('existing sessions install only when explicitly enabled', () => {
+  const old = { header: {}, requestHeader: () => ({ config: {} }), snapshotEvents: () => [] };
+  assert.equal(shouldInstallTools(old), false);
+  assert.equal(shouldInstallTools(old, { includeExistingSessions: true }), true);
+  assert.equal(shouldInstallTools(old, { includeExistingSessions: true, source: 'resume' }), true);
+
+  const subagent = { header: { origin: 'subagent' }, requestHeader: () => undefined, snapshotEvents: () => [] };
+  assert.equal(shouldInstallTools(subagent, { includeExistingSessions: true }), false);
+  assert.equal(shouldInstallTools(subagent, { includeExistingSessions: true, includeSubagents: true }), true);
 });

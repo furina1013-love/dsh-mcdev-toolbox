@@ -1,4 +1,23 @@
 /**
+ * Decide whether this Agent should receive the control tool and guidance.
+ * By default only a brand-new conversation is eligible. Opting into
+ * includeExistingSessions deliberately allows resumed conversations too; the
+ * tool addition then lands at the end of their existing history. Subagents stay
+ * excluded unless includeSubagents is also enabled.
+ */
+export function shouldInstallTools(session, { includeSubagents = false, includeExistingSessions = false, source } = {}) {
+  if (!includeExistingSessions) return isNewConversation(session, { includeSubagents, source });
+  if (session === undefined || session === null) return false;
+  const header = session.header;
+  if (!includeSubagents) {
+    if (header?.origin === 'subagent') return false;
+    if (header?.parentSession !== undefined) return false;
+    if (header?.delegationDepth !== undefined) return false;
+  }
+  return true;
+}
+
+/**
  * A conversation is new when it has never sent a model request and was not
  * seeded from another session. Resumed sessions and forks keep their exact old
  * history; the plugin never adds prompt text or tools to them.

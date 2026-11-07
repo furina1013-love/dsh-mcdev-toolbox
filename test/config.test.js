@@ -7,6 +7,8 @@ test('config defaults and bounds', () => {
   assert.equal(config.enabled, true);
   assert.equal(config.maxOutputChars, 12000);
   assert.equal(config.gradleTimeoutMs, 180000);
+  assert.equal(config.includeExistingSessions, false);
+  assert.equal(resolveConfig({ includeExistingSessions: true }).includeExistingSessions, true);
   assert.throws(() => resolveConfig({ maxOutputChars: 1 }), /maxOutputChars/);
   assert.throws(() => resolveConfig({ maxOutputChars: 16001 }), /maxOutputChars/);
   assert.throws(() => resolveConfig({ gradleTimeoutMs: 9999999 }), /gradleTimeoutMs/);

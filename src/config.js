@@ -2,7 +2,8 @@ const DEFAULTS = Object.freeze({
   enabled: true,
   maxOutputChars: 12000,
   gradleTimeoutMs: 180000,
-  includeSubagents: false
+  includeSubagents: false,
+  includeExistingSessions: false
 });
 
 function positiveInteger(value, fallback, name, min, max) {
@@ -20,6 +21,7 @@ export function resolveConfig(raw = {}) {
     enabled: raw.enabled === undefined ? DEFAULTS.enabled : Boolean(raw.enabled),
     maxOutputChars: positiveInteger(raw.maxOutputChars, DEFAULTS.maxOutputChars, 'maxOutputChars', 2000, 16000),
     gradleTimeoutMs: positiveInteger(raw.gradleTimeoutMs, DEFAULTS.gradleTimeoutMs, 'gradleTimeoutMs', 5000, 900000),
-    includeSubagents: raw.includeSubagents === undefined ? DEFAULTS.includeSubagents : Boolean(raw.includeSubagents)
+    includeSubagents: raw.includeSubagents === undefined ? DEFAULTS.includeSubagents : Boolean(raw.includeSubagents),
+    includeExistingSessions: raw.includeExistingSessions === undefined ? DEFAULTS.includeExistingSessions : Boolean(raw.includeExistingSessions)
   });
 }

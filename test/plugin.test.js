@@ -81,3 +81,17 @@ test('activate registers group tools and deactivate removes them', async () => {
   assert.ok(fresh.registered.has('mcdev_mixin'));
   assert.ok(fresh.registered.has('mcdev_jar'));
 });
+
+test('includeExistingSessions opts resumed conversations into the control tool', async () => {
+  const ctx = fakeCtx();
+  await apply(ctx, { includeExistingSessions: true });
+  const old = fakeAgent({ old: true });
+  await ctx.handlers.get('agent/created')({ agent: old.agent, source: 'resume' });
+  assert.ok(old.registered.has('mcdev_toolbox'));
+  assert.equal(old.sections.length, 1);
+
+  const sub = fakeAgent({ subagent: true });
+  await ctx.handlers.get('agent/created')({ agent: sub.agent, source: 'startup' });
+  assert.equal(sub.registered.size, 0);
+  assert.equal(sub.sections.length, 0);
+});

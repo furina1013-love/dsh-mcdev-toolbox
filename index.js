@@ -1,5 +1,5 @@
 import { resolveConfig } from './src/config.js';
-import { isNewConversation } from './src/session.js';
+import { shouldInstallTools } from './src/session.js';
 import { CONTROL_TOOL, PLUGIN_NAME, SECTION_NAME } from './src/names.js';
 import { GROUPS, GROUP_NAMES, controlTool, groupTools } from './src/tool-defs.js';
 
@@ -104,7 +104,8 @@ function installScoped(scoped, config, logger) {
  * Host plugin: new conversations get one small control tool and a short
  * guidance section. Selected group tools are registered during the tool call,
  * so DSH records a developer/message tool-addition at the end of history on the
- * next request. Resumed and seeded sessions never receive either contribution.
+ * next request. Resumed and seeded sessions never receive either contribution
+ * unless includeExistingSessions is explicitly enabled.
  */
 export async function apply(ctx, rawConfig) {
   const config = resolveConfig(rawConfig ?? {});
@@ -116,7 +117,11 @@ export async function apply(ctx, rawConfig) {
   const installs = new Map();
 
   function install(agent, source) {
-    if (!isNewConversation(agent.session, { includeSubagents: config.includeSubagents, source })) return;
+    if (!shouldInstallTools(agent.session, {
+      includeSubagents: config.includeSubagents,
+      includeExistingSessions: config.includeExistingSessions,
+      source
+    })) return;
     if (installs.has(agent)) return;
     const fiber = agent.ctx.inject(['tools', 'systemPrompt', 'workingDirectory'], (scoped) => {
       installScoped(scoped, config, logger);
