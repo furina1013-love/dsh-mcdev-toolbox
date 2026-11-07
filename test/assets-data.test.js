@@ -10,7 +10,7 @@ async function project(version = '1.21.1') {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-json-'));
   await fs.mkdir(path.join(root, 'src/main/resources'), { recursive: true });
   await fs.writeFile(path.join(root, 'settings.gradle'), "rootProject.name = 'testmod'\n");
-  await fs.writeFile(path.join(root, 'build.gradle'), "plugins { id 'fabric-loom' version '1.9-SNAPSHOT' }\ndependencies { minecraft 'com.mojang:minecraft:" + version + "' }\n");
+  await fs.writeFile(path.join(root, 'build.gradle'), "plugins { id 'fabric-loom' version '1.9.2' }\ndependencies { minecraft 'com.mojang:minecraft:" + version + "' }\n");
   await fs.writeFile(path.join(root, 'gradle.properties'), 'minecraft_version=' + version + '\n');
   await fs.writeFile(path.join(root, 'src/main/resources/fabric.mod.json'), JSON.stringify({ schemaVersion: 1, id: 'testmod', version: '1.0.0', depends: { minecraft: '>=1.21', fabricloader: '>=0.16' } }));
   return root;

@@ -6,6 +6,9 @@ import { versionProfile } from './version.js';
 const BUILD_FILES = ['build.gradle', 'build.gradle.kts'];
 const SETTINGS_FILES = ['settings.gradle', 'settings.gradle.kts'];
 const PROJECT_MARKERS = [...SETTINGS_FILES, ...BUILD_FILES, 'gradle.properties'];
+// A lone gradle.properties is enough to recognize a project from above, but
+// not enough to claim an arbitrary descendant directory as the project root.
+const DESCENDANT_MARKERS = [...SETTINGS_FILES, ...BUILD_FILES];
 
 async function firstExisting(root, names) {
   for (const name of names) {
@@ -19,8 +22,8 @@ const SEARCH_IGNORED = new Set(['.git', '.gradle', 'node_modules', 'build', 'out
 const MAX_SEARCH_DIRS = 2000;
 const MAX_SEARCH_DEPTH = 4;
 
-async function hasProjectMarker(dir) {
-  for (const marker of PROJECT_MARKERS) {
+async function hasProjectMarker(dir, markers = PROJECT_MARKERS) {
+  for (const marker of markers) {
     if (await exists(path.join(dir, marker))) return true;
   }
   return false;
@@ -58,7 +61,7 @@ export async function locateProject(cwd) {
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.isSymbolicLink() || SEARCH_IGNORED.has(entry.name)) continue;
       const child = path.join(dir, entry.name);
-      if (await hasProjectMarker(child)) {
+      if (await hasProjectMarker(child, DESCENDANT_MARKERS)) {
         found.push({ root: child, depth: depth + 1 });
         continue;
       }

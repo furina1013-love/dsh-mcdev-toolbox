@@ -99,7 +99,7 @@ async function project() {
   await fs.mkdir(path.join(root, 'build/libs'), { recursive: true });
   await fs.mkdir(path.join(root, 'src/main/resources'), { recursive: true });
   await fs.writeFile(path.join(root, 'settings.gradle'), "rootProject.name = 'testmod'\n");
-  await fs.writeFile(path.join(root, 'build.gradle'), "plugins { id 'fabric-loom' version '1.9-SNAPSHOT' }\n");
+  await fs.writeFile(path.join(root, 'build.gradle'), "plugins { id 'fabric-loom' version '1.9.2' }\n");
   await fs.writeFile(path.join(root, 'gradle.properties'), 'minecraft_version=1.21.1\n');
   await fs.writeFile(path.join(root, 'src/main/resources/fabric.mod.json'), JSON.stringify({ schemaVersion: 1, id: 'testmod', version: '1.0.0' }));
   const jar = path.join(root, 'build/libs/demo.jar');

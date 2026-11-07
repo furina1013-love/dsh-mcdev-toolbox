@@ -144,7 +144,7 @@ export function groupTools({ ctx, config }) {
         minecraftVersion: { type: 'string', description: 'For init: Minecraft version, for example 1.21.1.' },
         loader: { type: 'string', enum: ['fabric'], description: 'For init: only Fabric is supported; use a loader MDK for NeoForge/Forge.' },
         loaderVersion: { type: 'string', description: 'For init: Fabric loader version; default 0.16.9.' },
-        loomVersion: { type: 'string', description: 'For init: Fabric Loom plugin version; default 1.9-SNAPSHOT.' },
+        loomVersion: { type: 'string', description: 'For init: Fabric Loom plugin version; default 1.9.2.' },
         javaVersion: { type: 'string', description: 'For init: Java release, normally 17 or 21; defaults from the Minecraft version.' },
         overwrite: { type: 'boolean', description: 'For init: replace generated files if they already exist (default false).' }
       }, async (args, exec) => {

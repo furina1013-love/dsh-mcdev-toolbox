@@ -10,7 +10,7 @@ async function fixture() {
   await fs.mkdir(path.join(root, 'src/main/java/com/example/testmod'), { recursive: true });
   await fs.mkdir(path.join(root, 'src/main/resources'), { recursive: true });
   await fs.writeFile(path.join(root, 'settings.gradle'), "rootProject.name = 'testmod'\n");
-  await fs.writeFile(path.join(root, 'build.gradle'), "plugins { id 'fabric-loom' version '1.9-SNAPSHOT' }\ndependencies { minecraft 'com.mojang:minecraft:1.21.1' }\n");
+  await fs.writeFile(path.join(root, 'build.gradle'), "plugins { id 'fabric-loom' version '1.9.2' }\ndependencies { minecraft 'com.mojang:minecraft:1.21.1' }\n");
   await fs.writeFile(path.join(root, 'gradle.properties'), 'minecraft_version=1.21.1\nyarn_mappings=1.21.1+build.3\njava_version=21\n');
   await fs.writeFile(path.join(root, 'src/main/resources/fabric.mod.json'), JSON.stringify({ schemaVersion: 1, id: 'testmod', version: '1.0.0', entrypoints: {}, depends: { minecraft: '>=1.21', fabricloader: '>=0.16' }, mixins: [] }));
   await fs.writeFile(path.join(root, 'src/main/resources/pack.mcmeta'), JSON.stringify({ pack: { pack_format: 34, description: 'test' } }));
@@ -109,4 +109,13 @@ test('warns when several subdirectory projects are visible', async () => {
   assert.equal(project.search.ambiguous, true);
   assert.deepEqual(project.search.candidates, ['alpha', 'beta']);
   assert.ok(project.warnings.some((warning) => warning.includes('Multiple Gradle projects')));
+});
+
+test('does not treat a lone gradle.properties as a descendant project root', async () => {
+  const session = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-props-'));
+  await fs.mkdir(path.join(session, 'docs'), { recursive: true });
+  await fs.writeFile(path.join(session, 'docs', 'gradle.properties'), 'minecraft_version=1.21.1\n');
+  const project = await detectProject(session);
+  assert.equal(project.found, false);
+  assert.equal(project.search.mode, 'none');
 });

@@ -22,3 +22,12 @@ test('item model definitions only start at 1.21.4', () => {
 test('unknown versions degrade safely', () => {
   assert.equal(versionProfile('2.0.0').known, false);
 });
+
+test('uses pack formats and Java levels from older version rows', () => {
+  assert.equal(versionProfile('1.19.2').resourcePack, 9);
+  assert.equal(versionProfile('1.19.3').resourcePack, 12);
+  assert.equal(versionProfile('1.17.1').java, 16);
+  assert.equal(versionProfile('1.17.1').resourcePack, 7);
+  assert.equal(versionProfile('1.16.5').java, 8);
+  assert.equal(versionProfile('1.16.5').resourcePack, 6);
+});

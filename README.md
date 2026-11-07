@@ -24,7 +24,7 @@
 
 - Node.js `^22.19.0` 或 `>=24.0.0`
 - DeepSeek Harness `>=0.2.0-0`
-- 项目使用 Gradle Wrapper（`gradlew` / `gradlew.bat`）；`mcdev_project init` 不会生成 wrapper JAR，首次请在工程根目录运行 `gradle wrapper --gradle-version 8.10`
+- 项目使用 Gradle Wrapper（`gradlew` / `gradlew.bat`）；`mcdev_project init` 不会生成 wrapper JAR，首次请在工程根目录运行 `gradle wrapper --gradle-version 8.11`
 
 ```bash
 git clone git@github.com:furina1013-love/dsh-mcdev-toolbox.git
@@ -93,7 +93,7 @@ git clone git@github.com:furina1013-love/dsh-mcdev-toolbox.git
 }
 ```
 
-生成后先执行一次 `gradle wrapper --gradle-version 8.10`（或使用已有 wrapper），再调用 `mcdev_build`。`init` 默认拒绝覆盖已存在的生成文件；只有明确传 `overwrite=true` 才替换。脚手架使用 Fabric Loom、官方 Mojang mappings 和可覆盖的 loader/Loom 版本，生成的是可继续编辑的起点，不是完整模板市场工程。
+生成后先执行一次 `gradle wrapper --gradle-version 8.11`（或使用已有 wrapper），再调用 `mcdev_build`。`init` 默认拒绝覆盖已存在的生成文件；只有明确传 `overwrite=true` 才替换。它也不会在已有工程内部再嵌套创建工程，不会给 Kotlin DSL 工程叠一套 Groovy 构建文件，并会拒绝通过符号链接写到工作目录之外。脚手架使用 Fabric Loom、官方 Mojang mappings 和可覆盖的 loader/Loom 版本，生成的是可继续编辑的起点，不是完整模板市场工程。
 
 ## 新会话与旧会话
 
@@ -151,7 +151,7 @@ cd dsh-mcdev-toolbox
 npm test
 ```
 
-测试不依赖真实 Minecraft 或 Gradle，使用临时目录构造 Fabric 项目、资源、配方、mixin、mapping 和日志 fixture。当前覆盖 **54 个 `node:test` 用例**，包括工具 schema 形状、新/旧会话判定、locale 路径穿越、Gradle 参数拒绝、1.20.4/1.20.5+ ingredient 格式、模型环检测、client-only 源码根、JAR/class 解析和日志尾部截断。
+测试不依赖真实 Minecraft 或 Gradle，使用临时目录构造 Fabric 项目、资源、配方、mixin、mapping 和日志 fixture。当前覆盖 **59 个 `node:test` 用例**，包括工具 schema 形状、新/旧会话判定、locale 路径穿越、Gradle 参数拒绝、1.20.4/1.20.5+ ingredient 格式、模型环检测、client-only 源码根、子目录/嵌套工程发现、初始化路径安全、JAR/class 解析和日志尾部截断。
 
 ### 目录
 
@@ -179,7 +179,7 @@ test/                 node:test 单测
 这些是运行环境问题，不是工具箱逻辑：
 
 - **apt 被禁用**：无法用系统包管理器安装 JDK/Gradle；可从可信镜像手动下载 JDK 和 Gradle，并把 `JAVA_HOME`、`PATH` 指向解压目录。需要 `javap` 时确保 JDK 的 `bin` 在 `PATH` 中。
-- **没有 Gradle Wrapper**：`mcdev_build` 只运行工程内的 `gradlew`/`gradlew.bat`。若只有系统 Gradle，先在工程根目录运行 `gradle wrapper --gradle-version 8.10`（或与工程匹配的版本）。
+- **没有 Gradle Wrapper**：`mcdev_build` 只运行工程内的 `gradlew`/`gradlew.bat`。若只有系统 Gradle，先在工程根目录运行 `gradle wrapper --gradle-version 8.11`（或与工程匹配的版本）。
 - **ForgeGradle 下载 MCP Config 失败**：`maven.minecraftforge.net` 较慢或被网络策略限制；必须在工程的 `repositories`/`pluginManagement` 中显式声明 Forge Maven，并检查代理/镜像，否则会出现 `Could not download MCP Config dependency: net.minecraftforge:forgeflower`。
 - **国内网络**：Gradle 发行版、Maven 依赖和 Fabric/NeoForge 仓库可按需换成可用镜像；工具箱不代管这些仓库配置，也不会自动联网下载。
 

@@ -5,7 +5,13 @@ const TABLE = [
   { min: [1, 20, 5], java: 21, singular: false, itemDefinitions: false, resultKey: 'id', ingredientStyle: 'string', neoforgeMeta: 'neoforge.mods.toml', resourcePack: 32, dataPack: 41 },
   { min: [1, 20, 2], java: 17, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: 'mods.toml', resourcePack: 18, dataPack: 18 },
   { min: [1, 20, 0], java: 17, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 15, dataPack: 15 },
-  { min: [1, 18, 0], java: 17, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 8, dataPack: 9 }
+  { min: [1, 19, 4], java: 17, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 13, dataPack: 13 },
+  { min: [1, 19, 3], java: 17, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 12, dataPack: 12 },
+  { min: [1, 19, 0], java: 17, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 9, dataPack: 10 },
+  { min: [1, 18, 0], java: 17, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 8, dataPack: 9 },
+  { min: [1, 17, 0], java: 16, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 7, dataPack: 7 },
+  { min: [1, 16, 2], java: 8, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 6, dataPack: 6 },
+  { min: [1, 16, 0], java: 8, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 5, dataPack: 5 }
 ];
 
 function parseVersion(value) {
