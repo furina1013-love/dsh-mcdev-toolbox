@@ -7,6 +7,7 @@ import { runMixin } from './tools/mixin.js';
 import { runJar } from './tools/jar.js';
 import { runLog } from './tools/log.js';
 import { boundText } from './util.js';
+import { detectProjectFrom } from './project.js';
 
 export const GROUP_NAMES = ['project', 'assets', 'data', 'code', 'diagnostics'];
 
@@ -127,9 +128,11 @@ function tool(name, description, parameters, execute, maxOutputChars = 12000) {
 }
 
 export function groupTools({ ctx, config }) {
-  const cwdOf = async (exec) => {
+  const cwdOf = async (exec, projectDir) => {
     if (exec.agent === undefined) throw new Error('Minecraft tools require an Agent Session');
-    return ctx.workingDirectory.ensure(exec.agent, exec.signal);
+    const cwd = await ctx.workingDirectory.ensure(exec.agent, exec.signal);
+    if (projectDir === undefined || projectDir === null || projectDir === '') return cwd;
+    return (await detectProjectFrom(cwd, projectDir)).root;
   };
   const maxOutputChars = Math.max(2000, Math.min(Number(config?.maxOutputChars) || 12000, 16000));
   const createTool = (name, description, parameters, execute) => tool(name, description, parameters, execute, maxOutputChars);
@@ -137,6 +140,7 @@ export function groupTools({ ctx, config }) {
     project: [
       createTool('mcdev_project', 'Inspect or validate a Minecraft Java mod project, or initialize a new Fabric project in an empty directory. inspect reports loader, Minecraft/Java versions, mod id, mappings, metadata files, mixins and the Gradle wrapper. validate adds structured errors and warnings. init writes a minimal Fabric project (settings.gradle, build.gradle, gradle.properties, fabric.mod.json, pack.mcmeta and an entrypoint class); it only supports Fabric and never overwrites files unless overwrite=true.', {
         action: { type: 'string', enum: ['inspect', 'validate', 'init'], description: 'inspect (default), validate, or init a new Fabric project.' },
+        projectDir: { type: 'string', description: 'For inspect/validate: optional Gradle project root, absolute or relative to the session working directory. Use when the session cwd is not the mod project; ignored for init.' },
         directory: { type: 'string', description: 'For init: project directory relative to the session working directory; default .; must stay inside it.' },
         modId: { type: 'string', description: 'For init: mod id, for example ruby.' },
         name: { type: 'string', description: 'For init: display name; defaults to modId.' },
@@ -148,20 +152,23 @@ export function groupTools({ ctx, config }) {
         javaVersion: { type: 'string', description: 'For init: Java release, normally 17 or 21; defaults from the Minecraft version.' },
         overwrite: { type: 'boolean', description: 'For init: replace generated files if they already exist (default false).' }
       }, async (args, exec) => {
-        return runProject(args.action ?? 'inspect', await cwdOf(exec), args);
+        const cwd = await cwdOf(exec, args.action === 'init' ? undefined : args.projectDir);
+        return runProject(args.action ?? 'inspect', cwd, args);
       }),
       createTool('mcdev_build', 'Run one Gradle task in the detected project with a hard timeout and bounded output. Prefer build, compileJava, processResources, runData, genSources, or runClient; do not use for shell commands.', {
+        projectDir: { type: 'string', description: 'Optional Gradle project root, absolute or relative to the session working directory. Use when the session cwd is not the mod project.' },
         task: { type: 'string', description: 'Gradle task name such as build, compileJava, runData, genSources, or runClient; defaults to build.' },
         args: { type: 'array', items: { type: 'string' }, description: 'Optional Gradle arguments, at most 8, e.g. --stacktrace or --rerun-tasks.' },
         timeoutMs: { type: 'integer', description: 'Optional timeout from 5000 to 900000 ms; defaults to the plugin setting.' }
       }, async (args, exec) => {
         const timeoutMs = Math.min(900000, Math.max(5000, args.timeoutMs ?? config.gradleTimeoutMs));
-        return runBuildTool({ task: args.task ?? 'build', args: args.args ?? [], timeoutMs, maxOutputChars: config.maxOutputChars, cwd: await cwdOf(exec) });
+        return runBuildTool({ task: args.task ?? 'build', args: args.args ?? [], timeoutMs, maxOutputChars: config.maxOutputChars, cwd: await cwdOf(exec, args.projectDir) });
       })
     ],
     assets: [
       createTool('mcdev_assets', 'Validate or create Minecraft asset JSON. validate checks models, blockstates and lang files for broken local references. item/block create model + blockstate + lang entries (and 1.21.4+ item model definitions). lang adds translation entries.', {
         action: { type: 'string', required: true, enum: ['validate', 'item', 'block', 'lang'], description: 'Operation to perform.' },
+        projectDir: { type: 'string', description: 'Optional Gradle project root, absolute or relative to the session working directory. Use when the session cwd is not the mod project.' },
         namespace: { type: 'string', description: 'Asset namespace; defaults to the project mod id.' },
         name: { type: 'string', description: 'Item/block path for item or block, e.g. ruby or machine/grinder.' },
         texture: { type: 'string', description: 'Texture id; defaults to <namespace>:item/<name> or <namespace>:block/<name>.' },
@@ -170,11 +177,12 @@ export function groupTools({ ctx, config }) {
         locale: { type: 'string', description: 'For action=lang: locale file name, default en_us.' },
         entries: { type: 'object', additionalProperties: true, description: 'For action=lang: an object mapping translation keys to strings.' },
         overwrite: { type: 'boolean', description: 'Overwrite existing JSON files (default false).' }
-      }, async (args, exec) => runAssets(args, { cwd: await cwdOf(exec), maxOutputChars: config.maxOutputChars }))
+      }, async (args, exec) => runAssets(args, { cwd: await cwdOf(exec, args.projectDir), maxOutputChars: config.maxOutputChars }))
     ],
     data: [
       createTool('mcdev_data', 'Generate or validate Minecraft data JSON. recipe writes shaped/shapeless/cooking/stonecutting/smithing recipes with version-correct result keys. tag and loot write datapack JSON. validate checks recipe/tag files without launching the game.', {
         action: { type: 'string', required: true, enum: ['recipe', 'tag', 'loot', 'validate'], description: 'Operation to perform.' },
+        projectDir: { type: 'string', description: 'Optional Gradle project root, absolute or relative to the session working directory. Use when the session cwd is not the mod project.' },
         name: { type: 'string', description: 'Recipe/loot path name, e.g. ruby_block or gears/iron_gear.' },
         type: { type: 'string', enum: ['crafting_shaped', 'crafting_shapeless', 'smelting', 'blasting', 'smoking', 'campfire_cooking', 'stonecutting', 'smithing', 'smithing_transform', 'smithing_trim'], description: 'Recipe type for action=recipe.' },
         group: { type: 'string', description: 'Optional recipe group.' },
@@ -223,31 +231,35 @@ export function groupTools({ ctx, config }) {
         replace: { type: 'boolean', description: 'Set replace:true for action=tag.' },
         item: { type: 'string', description: 'Loot drop item id for action=loot; defaults to <modid>:<name>.' },
         overwrite: { type: 'boolean', description: 'Overwrite existing files (default false).' }
-      }, async (args, exec) => runData(args, { cwd: await cwdOf(exec) }))
+      }, async (args, exec) => runData(args, { cwd: await cwdOf(exec, args.projectDir) }))
     ],
     code: [
       createTool('mcdev_mappings', 'Search local Tiny/TSRG/ProGuard mapping files for a class, method or field. Returns official and named names with owner/descriptor. Use when writing mixins or porting across mapping sets.', {
+        projectDir: { type: 'string', description: 'Optional Gradle project root, absolute or relative to the session working directory. Use when the session cwd is not the mod project.' },
         query: { type: 'string', required: true, description: 'Class simple/full name, method name, or field name; at least 2 characters.' },
         kind: { type: 'string', enum: ['auto', 'class', 'method', 'field'], description: 'Restrict result kind; default auto.' },
         file: { type: 'string', description: 'Optional project-relative mapping file; otherwise likely Gradle caches are searched.' },
         limit: { type: 'integer', description: 'Maximum results 1-30, default 20.' }
-      }, async (args, exec) => runMappings(args, { cwd: await cwdOf(exec) })),
+      }, async (args, exec) => runMappings(args, { cwd: await cwdOf(exec, args.projectDir) })),
       createTool('mcdev_mixin', 'Validate mixin JSON configs and source classes, or list every @Mixin target in the project. Read-only; does not launch Minecraft.', {
-        action: { type: 'string', enum: ['validate', 'list', 'targets'], description: 'validate configs/classes; list configs; targets lists @Mixin annotations.' }
-      }, async (args, exec) => runMixin(args, { cwd: await cwdOf(exec) })),
+        action: { type: 'string', enum: ['validate', 'list', 'targets'], description: 'validate configs/classes; list configs; targets lists @Mixin annotations.' },
+        projectDir: { type: 'string', description: 'Optional Gradle project root, absolute or relative to the session working directory. Use when the session cwd is not the mod project.' }
+      }, async (args, exec) => runMixin(args, { cwd: await cwdOf(exec, args.projectDir) })),
       createTool('mcdev_jar', 'Inspect and reverse-engineer a local JAR without extracting it. action=inspect summarizes manifest, fabric/Forge/NeoForge metadata, classes, resources and nested jars; list filters entries; read returns one text entry; class parses fields, methods, signatures, string constants and references without a JDK; disassemble runs javap when a JDK is available. Read-only; never executes the jar.', {
         action: { type: 'string', enum: ['inspect', 'list', 'read', 'class', 'disassemble'], description: 'inspect is the default; list/read/class/disassemble inspect one archive.' },
+        projectDir: { type: 'string', description: 'Optional Gradle project root, absolute or relative to the session working directory. Use when the session cwd is not the mod project.' },
         path: { type: 'string', description: 'Project-relative .jar/.zip path. When omitted, uses the only jar under build/libs, build/devlibs, run/mods, or libs.' },
         entry: { type: 'string', description: 'For action=read: exact entry path, e.g. fabric.mod.json or META-INF/MANIFEST.MF.' },
         class: { type: 'string', description: 'For action=class/disassemble: dotted or slashed class name, e.g. com.example.Foo or com/example/Foo.' },
         prefix: { type: 'string', description: 'For action=list: only entries equal to this path or under this directory.' },
         limit: { type: 'integer', description: 'For action=list: maximum entries 1-1000, default 200.' }
-      }, async (args, exec) => runJar(args, { cwd: await cwdOf(exec), maxOutputChars: config.maxOutputChars }))
+      }, async (args, exec) => runJar(args, { cwd: await cwdOf(exec, args.projectDir), maxOutputChars: config.maxOutputChars }))
     ],
     diagnostics: [
       createTool('mcdev_log', 'Analyze a Minecraft launcher log or crash report and return known failure signatures with short excerpts and next actions. Defaults to run/logs/latest.log or the newest crash report.', {
-        path: { type: 'string', description: 'Optional project-relative log/crash-report path.' }
-      }, async (args, exec) => runLog(args, { cwd: await cwdOf(exec) }))
+        path: { type: 'string', description: 'Optional project-relative log/crash-report path.' },
+        projectDir: { type: 'string', description: 'Optional Gradle project root, absolute or relative to the session working directory. Use when the session cwd is not the mod project.' }
+      }, async (args, exec) => runLog(args, { cwd: await cwdOf(exec, args.projectDir) }))
     ]
   };
 }

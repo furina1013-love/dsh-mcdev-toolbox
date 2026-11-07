@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { detectProject, validateProject } from '../src/project.js';
+import { detectProject, detectProjectFrom, validateProject } from '../src/project.js';
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-project-'));
@@ -118,4 +118,23 @@ test('does not treat a lone gradle.properties as a descendant project root', asy
   const project = await detectProject(session);
   assert.equal(project.found, false);
   assert.equal(project.search.mode, 'none');
+});
+
+test('uses an explicit project root outside the working directory', async () => {
+  const session = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-session-'));
+  const root = path.join(session, 'nested', 'mod');
+  await fs.mkdir(root, { recursive: true });
+  await fs.writeFile(path.join(root, 'settings.gradle'), "rootProject.name = 'mod'\n");
+  await fs.writeFile(path.join(root, 'gradle.properties'), 'minecraft_version=1.21.1\njava_version=21\n');
+
+  const absolute = await detectProjectFrom(session, root);
+  assert.equal(absolute.found, true);
+  assert.equal(absolute.root, root);
+
+  const relative = await detectProjectFrom(session, path.join('nested', 'mod'));
+  assert.equal(relative.root, root);
+
+  await assert.rejects(() => detectProjectFrom(session, path.dirname(root)), /must be the Gradle project root/);
+  await assert.rejects(() => detectProjectFrom(session, path.join('..', 'outside')), /path escapes/);
+  await assert.rejects(() => detectProjectFrom(session, path.join(session, 'missing')), /not an existing directory/);
 });

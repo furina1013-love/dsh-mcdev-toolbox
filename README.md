@@ -10,6 +10,7 @@
 
 - **按需加载**：默认只注册一个控制工具 `mcdev_toolbox`，避免每个对话都携带 8 个无关工具。
 - **工程发现**：工作目录里有子目录工程时自动找到它；有多个候选时选最近的并列出候选，避免只能把会话固定在工程根目录。
+- **显式工程路径**：所有工程工具都接受可选 `projectDir`，会话工作目录不是工程根目录、或需要操作另一个工程时可直接指定绝对路径或会话相对路径。
 - **可创建工程**：`mcdev_project action=init` 生成最小 Fabric 工程（Gradle 配置、`fabric.mod.json`、`pack.mcmeta`、入口类），默认拒绝覆盖已有文件；NeoForge/Forge 请使用官方 MDK。
 - **Gradle 默认任务**：`mcdev_build` 不传 `task` 时默认运行 `build`，仍只允许白名单任务。
 - **新会话隔离**：插件安装、升级或恢复旧会话时，不会给已有历史补工具或提示词。
@@ -78,7 +79,7 @@ git clone git@github.com:furina1013-love/dsh-mcdev-toolbox.git
 
 ## 工程探测与创建
 
-- 从会话工作目录开始先向上找 8 层，再向下做有界搜索（最多 4 层、2000 个目录）。找到多个工程时选层级最浅、路径字典序最前的那个，并在 `search.candidates` 和 `warnings` 中列出全部候选；需要操作另一个工程时，把会话工作目录切到目标工程。
+- 从会话工作目录开始先向上找 8 层，再向下做有界搜索（最多 4 层、2000 个目录）。找到多个工程时选层级最浅、路径字典序最前的那个，并在 `search.candidates` 和 `warnings` 中列出全部候选；需要操作另一个工程时，优先传 `projectDir` 指定工程根；也可以把会话工作目录切到目标工程。
 - 空目录运行 `mcdev_project action=inspect` 仍返回 `found:false`；运行 `action=init` 创建最小 Fabric 工程，示例：
 
 ```json
@@ -92,6 +93,17 @@ git clone git@github.com:furina1013-love/dsh-mcdev-toolbox.git
   "javaVersion": "21"
 }
 ```
+
+任意工程工具都可以显式指定工程根，不要求会话工作目录本身是 Gradle 工程：
+
+```json
+{
+  "action": "validate",
+  "projectDir": "/root/java-mod-dev/crystal_multiplier"
+}
+```
+
+`projectDir` 必须是包含 `settings.gradle`/`build.gradle` 的工程根，不能指向工程内部子目录；相对路径按会话工作目录解析，越界路径会被拒绝。`mcdev_project action=init` 不使用 `projectDir`，创建位置由 `directory` 决定。
 
 生成后先执行一次 `gradle wrapper --gradle-version 8.11`（或使用已有 wrapper），再调用 `mcdev_build`。`init` 默认拒绝覆盖已存在的生成文件；只有明确传 `overwrite=true` 才替换。它也不会在已有工程内部再嵌套创建工程，不会给 Kotlin DSL 工程叠一套 Groovy 构建文件，并会拒绝通过符号链接写到工作目录之外。脚手架使用 Fabric Loom、官方 Mojang mappings 和可覆盖的 loader/Loom 版本，生成的是可继续编辑的起点，不是完整模板市场工程。
 
@@ -151,7 +163,7 @@ cd dsh-mcdev-toolbox
 npm test
 ```
 
-测试不依赖真实 Minecraft 或 Gradle，使用临时目录构造 Fabric 项目、资源、配方、mixin、mapping 和日志 fixture。当前覆盖 **59 个 `node:test` 用例**，包括工具 schema 形状、新/旧会话判定、locale 路径穿越、Gradle 参数拒绝、1.20.4/1.20.5+ ingredient 格式、模型环检测、client-only 源码根、子目录/嵌套工程发现、初始化路径安全、JAR/class 解析和日志尾部截断。
+测试不依赖真实 Minecraft 或 Gradle，使用临时目录构造 Fabric 项目、资源、配方、mixin、mapping 和日志 fixture。当前覆盖 **61 个 `node:test` 用例**，包括工具 schema 形状、新/旧会话判定、locale 路径穿越、Gradle 参数拒绝、1.20.4/1.20.5+ ingredient 格式、模型环检测、client-only 源码根、子目录/嵌套工程发现、显式 `projectDir` 与越界路径、初始化路径安全、JAR/class 解析和日志尾部截断。
 
 ### 目录
 

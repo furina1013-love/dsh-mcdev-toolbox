@@ -63,3 +63,18 @@ test('project tool can initialize a Fabric project through its execute surface',
   assert.ok(result.files.includes('settings.gradle'));
   await assert.rejects(() => projectTool.execute({ action: 'init', modId: 'ruby', minecraftVersion: '1.21.1' }, { agent: {} }), /refusing to overwrite/);
 });
+
+test('projectDir selects a project outside the session working directory', async () => {
+  const session = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-tool-root-'));
+  const root = path.join(session, 'actual-mod');
+  await fs.mkdir(root, { recursive: true });
+  await fs.writeFile(path.join(root, 'settings.gradle'), "rootProject.name = 'actual'\n");
+  await fs.writeFile(path.join(root, 'gradle.properties'), 'minecraft_version=1.21.1\njava_version=21\n');
+  const ctx = { workingDirectory: { ensure: async () => session } };
+  const definitions = groupTools({ ctx, config: { maxOutputChars: 12000, gradleTimeoutMs: 180000 } });
+  const projectTool = definitions.project.find((tool) => tool.name === 'mcdev_project');
+  const result = await projectTool.execute({ action: 'inspect', projectDir: root }, { agent: {} });
+  assert.equal(result.found, true);
+  assert.equal(result.root, root);
+  assert.equal(result.minecraftVersion, '1.21.1');
+});

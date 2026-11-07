@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { exists, parseKeyValueProperties, readJson, readTextLimited, relativeTo, resolveInside, walk } from './util.js';
+import { exists, parseKeyValueProperties, readJson, readTextLimited, relativeTo, resolveInside, statKind, walk } from './util.js';
 import { versionProfile } from './version.js';
 
 const BUILD_FILES = ['build.gradle', 'build.gradle.kts'];
@@ -77,6 +77,24 @@ export async function locateProject(cwd) {
     root: found[0].root,
     search: { from: start, mode: 'descendant', relative: candidates[0], candidates, ambiguous: found.length > 1 }
   };
+}
+
+/** Detect a project from a session cwd plus an optional explicit project root. */
+export async function detectProjectFrom(cwd, projectDir) {
+  const base = path.resolve(cwd);
+  if (projectDir === undefined || projectDir === null || String(projectDir).trim() === '') {
+    return detectProject(base);
+  }
+  const raw = String(projectDir).trim();
+  const target = path.isAbsolute(raw) ? path.resolve(raw) : resolveInside(base, raw);
+  if ((await statKind(target)) !== 'dir') {
+    throw new Error('projectDir is not an existing directory: ' + target);
+  }
+  const located = await locateProject(target);
+  if (located.root === undefined || path.resolve(located.root) !== path.resolve(target)) {
+    throw new Error('projectDir must be the Gradle project root (settings.gradle or build.gradle): ' + target);
+  }
+  return detectProject(target);
 }
 
 /** Backwards-compatible helper returning only the root path. */
