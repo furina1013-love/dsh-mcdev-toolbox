@@ -14,7 +14,8 @@ function guidanceText() {
   return [
     '## Minecraft Java mod development',
     'If the user asks to create, modify, debug, or port a Minecraft Java Edition mod (Fabric, NeoForge, Forge, or Architectury), call ' + CONTROL_TOOL + ' with action "activate" and only the groups the task needs: ' + GROUP_NAMES.join(', ') + '. The selected tools appear on the next step.',
-    'Do not call it for unrelated tasks. Once active, prefer mcdev_project before broad file reads, mcdev_build instead of shell Gradle runs, mcdev_assets/mcdev_data for generated JSON, mcdev_jar for archive contents, and mcdev_log before reading a whole log. Call action "deactivate" when a group is no longer useful.'
+    'Do not call it for unrelated tasks. Once active, prefer mcdev_project before broad file reads, mcdev_build instead of shell Gradle runs, mcdev_assets/mcdev_data for generated JSON, mcdev_jar for archive contents, and mcdev_log before reading a whole log. Call action "deactivate" when a group is no longer useful.',
+    'If the session working directory is not the Gradle project root, pass projectDir to any project-aware tool instead of changing the session; it accepts an absolute path or a path relative to the working directory.'
   ].join('\n');
 }
 
