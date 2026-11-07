@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GROUP_NAMES, GROUPS, controlTool, groupTools, allGroupTools } from '../src/tool-defs.js';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 test('group catalog is complete and unique', () => {
   assert.deepEqual(GROUP_NAMES, ['project', 'assets', 'data', 'code', 'diagnostics']);
@@ -48,4 +51,15 @@ test('group tool factories produce unique valid definitions', () => {
   assert.deepEqual(jar.parameters.properties.action.enum, ['inspect', 'list', 'read', 'class', 'disassemble']);
   assert.equal(jar.parameters.properties.action.required, undefined);
   assert.equal(jar.parameters.properties.path.type, 'string');
+});
+
+test('project tool can initialize a Fabric project through its execute surface', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-tool-init-'));
+  const ctx = { workingDirectory: { ensure: async () => cwd } };
+  const definitions = groupTools({ ctx, config: { maxOutputChars: 12000, gradleTimeoutMs: 180000 } });
+  const projectTool = definitions.project.find((tool) => tool.name === 'mcdev_project');
+  const result = await projectTool.execute({ action: 'init', modId: 'ruby', minecraftVersion: '1.21.1' }, { agent: {} });
+  assert.equal(result.ok, true);
+  assert.ok(result.files.includes('settings.gradle'));
+  await assert.rejects(() => projectTool.execute({ action: 'init', modId: 'ruby', minecraftVersion: '1.21.1' }, { agent: {} }), /refusing to overwrite/);
 });

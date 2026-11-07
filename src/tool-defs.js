@@ -135,19 +135,28 @@ export function groupTools({ ctx, config }) {
   const createTool = (name, description, parameters, execute) => tool(name, description, parameters, execute, maxOutputChars);
   return {
     project: [
-      createTool('mcdev_project', 'Inspect a Minecraft Java mod project: loader, Minecraft/Java versions, mod id, mappings, metadata files, mixins and Gradle wrapper. action=validate also checks metadata, pack.mcmeta, source roots and mixin configs. Read-only.', {
-        action: { type: 'string', enum: ['inspect', 'validate'], description: 'inspect returns the project summary; validate adds structured errors and warnings.' }
+      createTool('mcdev_project', 'Inspect or validate a Minecraft Java mod project, or initialize a new Fabric project in an empty directory. inspect reports loader, Minecraft/Java versions, mod id, mappings, metadata files, mixins and the Gradle wrapper. validate adds structured errors and warnings. init writes a minimal Fabric project (settings.gradle, build.gradle, gradle.properties, fabric.mod.json, pack.mcmeta and an entrypoint class); it only supports Fabric and never overwrites files unless overwrite=true.', {
+        action: { type: 'string', enum: ['inspect', 'validate', 'init'], description: 'inspect (default), validate, or init a new Fabric project.' },
+        directory: { type: 'string', description: 'For init: project directory relative to the session working directory; default .; must stay inside it.' },
+        modId: { type: 'string', description: 'For init: mod id, for example ruby.' },
+        name: { type: 'string', description: 'For init: display name; defaults to modId.' },
+        packageName: { type: 'string', description: 'For init: Java package; defaults to com.example.<modId>.' },
+        minecraftVersion: { type: 'string', description: 'For init: Minecraft version, for example 1.21.1.' },
+        loader: { type: 'string', enum: ['fabric'], description: 'For init: only Fabric is supported; use a loader MDK for NeoForge/Forge.' },
+        loaderVersion: { type: 'string', description: 'For init: Fabric loader version; default 0.16.9.' },
+        loomVersion: { type: 'string', description: 'For init: Fabric Loom plugin version; default 1.9-SNAPSHOT.' },
+        javaVersion: { type: 'string', description: 'For init: Java release, normally 17 or 21; defaults from the Minecraft version.' },
+        overwrite: { type: 'boolean', description: 'For init: replace generated files if they already exist (default false).' }
       }, async (args, exec) => {
-        const result = await runProject(args.action ?? 'inspect', await cwdOf(exec));
-        return result;
+        return runProject(args.action ?? 'inspect', await cwdOf(exec), args);
       }),
       createTool('mcdev_build', 'Run one Gradle task in the detected project with a hard timeout and bounded output. Prefer build, compileJava, processResources, runData, genSources, or runClient; do not use for shell commands.', {
-        task: { type: 'string', required: true, description: 'Gradle task name such as build, compileJava, runData, genSources, or runClient.' },
+        task: { type: 'string', description: 'Gradle task name such as build, compileJava, runData, genSources, or runClient; defaults to build.' },
         args: { type: 'array', items: { type: 'string' }, description: 'Optional Gradle arguments, at most 8, e.g. --stacktrace or --rerun-tasks.' },
         timeoutMs: { type: 'integer', description: 'Optional timeout from 5000 to 900000 ms; defaults to the plugin setting.' }
       }, async (args, exec) => {
         const timeoutMs = Math.min(900000, Math.max(5000, args.timeoutMs ?? config.gradleTimeoutMs));
-        return runBuildTool({ task: args.task, args: args.args ?? [], timeoutMs, maxOutputChars: config.maxOutputChars, cwd: await cwdOf(exec) });
+        return runBuildTool({ task: args.task ?? 'build', args: args.args ?? [], timeoutMs, maxOutputChars: config.maxOutputChars, cwd: await cwdOf(exec) });
       })
     ],
     assets: [

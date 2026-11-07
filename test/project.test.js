@@ -74,3 +74,39 @@ test('does not compare Java versions when the version profile has no requirement
   const validation = await validateProject(project);
   assert.ok(!validation.warnings.some((warning) => warning.includes('may be too old')));
 });
+
+test('finds a Gradle project in a subdirectory of the working directory', async () => {
+  const session = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-session-'));
+  const root = path.join(session, 'mods', 'example');
+  await fs.mkdir(path.join(root, 'src/main/java'), { recursive: true });
+  await fs.writeFile(path.join(root, 'settings.gradle'), "rootProject.name = 'example'\n");
+  await fs.writeFile(path.join(root, 'gradle.properties'), 'minecraft_version=1.21.1\njava_version=21\n');
+  const project = await detectProject(session);
+  assert.equal(project.found, true);
+  assert.equal(project.root, root);
+  assert.equal(project.search.mode, 'descendant');
+  assert.deepEqual(project.search.candidates, ['mods/example']);
+  assert.ok(project.warnings.some((warning) => warning.includes('using mods/example')));
+});
+
+test('reports an empty working directory without searching endlessly', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-empty-'));
+  const project = await detectProject(cwd);
+  assert.equal(project.found, false);
+  assert.equal(project.search.mode, 'none');
+  assert.deepEqual(project.warnings, ['No Gradle project marker found; run from a Fabric/NeoForge/Forge project directory.']);
+});
+
+test('warns when several subdirectory projects are visible', async () => {
+  const session = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-multi-'));
+  for (const name of ['alpha', 'beta']) {
+    const root = path.join(session, name);
+    await fs.mkdir(root, { recursive: true });
+    await fs.writeFile(path.join(root, 'build.gradle'), "plugins { id 'java' }\n");
+  }
+  const project = await detectProject(session);
+  assert.equal(project.found, true);
+  assert.equal(project.search.ambiguous, true);
+  assert.deepEqual(project.search.candidates, ['alpha', 'beta']);
+  assert.ok(project.warnings.some((warning) => warning.includes('Multiple Gradle projects')));
+});

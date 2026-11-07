@@ -15,17 +15,70 @@ async function firstExisting(root, names) {
   return undefined;
 }
 
-export async function findProjectRoot(cwd) {
-  let current = path.resolve(cwd);
+const SEARCH_IGNORED = new Set(['.git', '.gradle', 'node_modules', 'build', 'out', 'target', 'run', 'logs', '.idea', '.vscode']);
+const MAX_SEARCH_DIRS = 2000;
+const MAX_SEARCH_DEPTH = 4;
+
+async function hasProjectMarker(dir) {
+  for (const marker of PROJECT_MARKERS) {
+    if (await exists(path.join(dir, marker))) return true;
+  }
+  return false;
+}
+
+/**
+ * Locate a Gradle project from the session working directory. Prefer the
+ * nearest ancestor, then look a bounded way down for a single project in a
+ * subdirectory. Generated/build directories are never searched.
+ */
+export async function locateProject(cwd) {
+  const start = path.resolve(cwd);
+  let current = start;
   for (let depth = 0; depth < 8; depth += 1) {
-    for (const marker of PROJECT_MARKERS) {
-      if (await exists(path.join(current, marker))) return current;
+    if (await hasProjectMarker(current)) {
+      return {
+        root: current,
+        search: { from: start, mode: 'upward', relative: relativeTo(start, current), candidates: [relativeTo(start, current)], ambiguous: false }
+      };
     }
     const parent = path.dirname(current);
     if (parent === current) break;
     current = parent;
   }
-  return undefined;
+
+  const found = [];
+  const queue = [{ dir: start, depth: 0 }];
+  let visited = 0;
+  while (queue.length > 0 && visited < MAX_SEARCH_DIRS) {
+    const { dir, depth } = queue.shift();
+    visited += 1;
+    let entries;
+    try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { continue; }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.isSymbolicLink() || SEARCH_IGNORED.has(entry.name)) continue;
+      const child = path.join(dir, entry.name);
+      if (await hasProjectMarker(child)) {
+        found.push({ root: child, depth: depth + 1 });
+        continue;
+      }
+      if (depth + 1 < MAX_SEARCH_DEPTH) queue.push({ dir: child, depth: depth + 1 });
+    }
+  }
+  if (found.length === 0) {
+    return { root: undefined, search: { from: start, mode: 'none', relative: undefined, candidates: [], ambiguous: false } };
+  }
+  found.sort((a, b) => a.depth - b.depth || a.root.localeCompare(b.root));
+  const candidates = found.map((entry) => relativeTo(start, entry.root));
+  return {
+    root: found[0].root,
+    search: { from: start, mode: 'descendant', relative: candidates[0], candidates, ambiguous: found.length > 1 }
+  };
+}
+
+/** Backwards-compatible helper returning only the root path. */
+export async function findProjectRoot(cwd) {
+  return (await locateProject(cwd)).root;
 }
 
 function detectLoader({ buildText, fabricMeta, neoforgeMeta, modsMeta }) {
@@ -76,9 +129,10 @@ async function readOptional(file) {
 }
 
 export async function detectProject(cwd) {
-  const root = await findProjectRoot(cwd);
+  const located = await locateProject(cwd);
+  const root = located.root;
   if (root === undefined) {
-    return { found: false, cwd, warnings: ['No Gradle project marker found; run from a Fabric/NeoForge/Forge project directory.'] };
+    return { found: false, cwd, search: located.search, warnings: ['No Gradle project marker found; run from a Fabric/NeoForge/Forge project directory.'] };
   }
   const buildFile = await firstExisting(root, BUILD_FILES);
   const settingsFile = await firstExisting(root, SETTINGS_FILES);
@@ -147,6 +201,9 @@ export async function detectProject(cwd) {
   }
   const profile = versionProfile(minecraftVersion);
   const warnings = [];
+  if (located.search.mode === 'descendant') warnings.push('No Gradle project marker in the working directory; using ' + located.search.relative + ' found below it.');
+  if (located.search.ambiguous) warnings.push('Multiple Gradle projects found below the working directory (' + located.search.candidates.join(', ') + '); using ' + located.search.relative + '. Set the session working directory to the intended project when this is not the one.');
+
   if (minecraftVersion !== undefined && !profile.known) warnings.push('Minecraft version ' + minecraftVersion + ' is not in the built-in version table; version-specific checks use fallback conventions');
   if (loader === 'unknown') warnings.push('Could not identify Fabric/NeoForge/Forge from build files or metadata.');
   if (minecraftVersion === undefined) warnings.push('Could not read the Minecraft version.');
@@ -158,6 +215,7 @@ export async function detectProject(cwd) {
   return {
     found: true,
     root,
+    search: located.search,
     loader,
     minecraftVersion,
     mappings,

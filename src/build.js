@@ -82,7 +82,7 @@ async function listArtifacts(root) {
 }
 
 /** Run one Gradle task with bounded capture and a hard timeout. */
-export async function runGradle({ cwd, task, args = [], timeoutMs = 180000, maxOutputChars = 12000 }) {
+export async function runGradle({ cwd, task = 'build', args = [], timeoutMs = 180000, maxOutputChars = 12000 }) {
   assertGradleInvocation(task, args);
   const project = await detectProject(cwd);
   if (!project.found) throw new Error('no Gradle project found from the session working directory');
