@@ -155,3 +155,48 @@ test('requires trust before using a project root outside the session directory',
   await fs.writeFile(path.join(child, 'settings.gradle'), "rootProject.name = 'inner'\n");
   assert.equal((await detectProjectFrom(session, child)).root, child);
 });
+
+test('refuses a projectDir that symlinks out of the session directory', async () => {
+  const session = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-session-'));
+  const evil = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-evil-'));
+  await fs.writeFile(path.join(evil, 'settings.gradle'), "rootProject.name = 'evil'\n");
+  await fs.writeFile(path.join(evil, 'build.gradle'), "plugins { id 'java' }\n");
+  await fs.writeFile(path.join(evil, 'gradlew'), '#!/bin/sh\necho PWNED\n');
+  await fs.symlink(evil, path.join(session, 'link'), 'dir');
+  await assert.rejects(() => detectProjectFrom(session, path.join(session, 'link')), (error) => error.code === 'UNTRUSTED_PROJECT_ROOT');
+  // Even a descendant that resolves outside must be rejected: the check runs on
+  // real paths, not on the lexical shape of the requested path.
+  await assert.rejects(() => detectProjectFrom(session, path.join(session, 'link')), /not listed in trustedRoots/);
+});
+
+test('does not trust ancestors of the session directory', async () => {
+  const session = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-session-'));
+  const child = path.join(session, 'mods');
+  await fs.mkdir(child, { recursive: true });
+  await fs.writeFile(path.join(child, 'settings.gradle'), "rootProject.name = 'child'\n");
+  // The parent of the session directory is not a trusted project root.
+  await assert.rejects(() => detectProjectFrom(child, session), (error) => error.code === 'UNTRUSTED_PROJECT_ROOT');
+});
+
+test('resolves trustedRoots entries through symlinks', async () => {
+  const session = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-session-'));
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-base-'));
+  const real = path.join(base, 'real');
+  await fs.mkdir(real, { recursive: true });
+  await fs.writeFile(path.join(real, 'settings.gradle'), "rootProject.name = 'real'\n");
+  const aliased = path.join(base, 'alias');
+  await fs.symlink(real, aliased, 'dir');
+  const project = await detectProjectFrom(session, real, { trustedRoots: [aliased] });
+  assert.equal(project.root, real);
+});
+
+test('validates pack formats for verifiably newer releases', async () => {
+  const cwd = await fixture();
+  await fs.writeFile(path.join(cwd, 'gradle.properties'), 'minecraft_version=1.21.5\nyarn_mappings=1.21.5+build.1\njava_version=21\n');
+  await fs.writeFile(path.join(cwd, 'build.gradle'), "plugins { id 'fabric-loom' version '1.9.2' }\ndependencies { minecraft 'com.mojang:minecraft:1.21.5' }\n");
+  await fs.writeFile(path.join(cwd, 'src/main/resources/pack.mcmeta'), JSON.stringify({ pack: { pack_format: 99, description: 'test' } }));
+  const project = await detectProject(cwd);
+  assert.equal(project.versionKnown, false);
+  const validation = await validateProject(project);
+  assert.ok(validation.warnings.some((warning) => warning.includes('expected 55')));
+});

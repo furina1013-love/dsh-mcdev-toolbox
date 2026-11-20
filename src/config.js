@@ -16,7 +16,13 @@ function stringList(value, name) {
     if (typeof item !== 'string' || item.trim() === '' || !(item.startsWith('/') || /^[A-Za-z]:[\\/]/.test(item))) {
       throw new TypeError(name + ' entries must be absolute directory paths');
     }
-    return item.trim();
+    const entry = item.trim();
+    // A root path (or a Windows drive root) would trust the whole filesystem,
+    // which defeats the point of the list.
+    if (entry === '/' || /^[A-Za-z]:[\\/]?$/.test(entry)) {
+      throw new TypeError(name + ' must not contain a filesystem root; list the project directories instead');
+    }
+    return entry;
   }));
 }
 

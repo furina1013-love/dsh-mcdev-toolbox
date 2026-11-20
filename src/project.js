@@ -86,20 +86,42 @@ export async function detectProjectFrom(cwd, projectDir, options = {}) {
     return detectProject(base);
   }
   const raw = String(projectDir).trim();
-  const target = path.isAbsolute(raw) ? path.resolve(raw) : resolveInside(base, raw);
-  if ((await statKind(target)) !== 'dir') {
-    throw new Error('projectDir is not an existing directory: ' + target);
+  const requested = path.isAbsolute(raw) ? path.resolve(raw) : resolveInside(base, raw);
+  const trustedRoots = options.trustedRoots ?? [];
+  // Resolve symlinks before anything else. A lexical check can be defeated by a
+  // symlink inside the project pointing at a directory that ships its own
+  // gradlew, and running that gradlew is arbitrary code execution.
+  const realBase = await realpathOrUndefined(base);
+  const realTarget = await realpathOrUndefined(requested);
+  if (realTarget === undefined) {
+    throw new Error('projectDir is not an existing directory: ' + requested);
   }
-  const located = await locateProject(target);
-  if (located.root === undefined || path.resolve(located.root) !== path.resolve(target)) {
-    throw new Error('projectDir must be the Gradle project root (settings.gradle or build.gradle): ' + target);
-  }
-  if (!isTrustedProjectRoot(base, target, options.trustedRoots ?? [])) {
-    const error = new Error(trustInstruction(target, options.trustedRoots ?? []));
+  // Trust is decided on real paths and before any directory walking, so an
+  // unauthorised directory is never inspected, only named in the error.
+  if (!(await isTrustedProjectRoot(base, realTarget, trustedRoots, realBase))) {
+    const error = new Error(trustInstruction(requested, trustedRoots));
     error.code = 'UNTRUSTED_PROJECT_ROOT';
     throw error;
   }
-  return detectProject(target);
+  if ((await statKind(realTarget)) !== 'dir') {
+    throw new Error('projectDir is not an existing directory: ' + requested);
+  }
+  const located = await locateProject(realTarget);
+  if (located.root === undefined || path.resolve(located.root) !== path.resolve(realTarget)) {
+    throw new Error('projectDir must be the Gradle project root (settings.gradle or build.gradle): ' + requested);
+  }
+  const project = await detectProject(realTarget);
+  project.requestedRoot = requested;
+  return project;
+}
+
+/** realpath that returns undefined instead of throwing when the path is gone. */
+async function realpathOrUndefined(target) {
+  try {
+    return await fs.realpath(target);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -110,18 +132,21 @@ export async function detectProjectFrom(cwd, projectDir, options = {}) {
  * one of its descendants, inside one of the configured trustedRoots, or an
  * ancestor of the working directory (the user is already working there).
  */
-export function isTrustedProjectRoot(cwd, root, trustedRoots = []) {
-  const base = path.resolve(cwd);
-  const target = path.resolve(root);
+export async function isTrustedProjectRoot(cwd, root, trustedRoots = [], resolvedBase) {
+  const base = resolvedBase ?? (await realpathOrUndefined(path.resolve(cwd))) ?? path.resolve(cwd);
+  const target = (await realpathOrUndefined(path.resolve(root))) ?? path.resolve(root);
   const inside = (child, parent) => {
     const rel = path.relative(parent, child);
     return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
   };
-  if (inside(target, base) || inside(base, target)) return true;
-  return trustedRoots.some((entry) => {
-    const trusted = path.resolve(entry);
-    return inside(target, trusted);
-  });
+  // The working directory and everything below it, but nothing above it: an
+  // ancestor check would make every directory up to / trusted.
+  if (inside(target, base)) return true;
+  for (const entry of trustedRoots) {
+    const real = (await realpathOrUndefined(path.resolve(entry))) ?? path.resolve(entry);
+    if (inside(target, real)) return true;
+  }
+  return false;
 }
 
 /**
@@ -277,6 +302,8 @@ export async function detectProject(cwd) {
     javaVersion,
     versionProfile: profile,
     versionKnown: profile.known,
+    versionNewer: profile.newer === true,
+    versionSupported: profile.supported === true,
     versionRange: profile.range,
     modId,
     buildFile: buildFile === undefined ? undefined : relativeTo(root, buildFile),
@@ -362,7 +389,10 @@ export async function validateProject(project) {
       const pack = await readJson(packFile);
       if (!Number.isInteger(pack.pack?.pack_format)) warnings.push('pack.mcmeta: pack.pack_format must be an integer');
       else {
-        const expected = project.versionKnown === true ? project.versionProfile?.resourcePack : undefined;
+        // versionProfile only reports a pack format when it has a real value
+        // for this release, so a verified-but-not-yet-tabled version is still
+        // checked and an unknown one is silently skipped.
+        const expected = project.versionProfile?.resourcePack;
         const supported = Array.isArray(pack.pack.supported_formats) ? pack.pack.supported_formats : [];
         if (expected !== undefined && pack.pack.pack_format !== expected && !supported.includes(expected)) warnings.push('pack.mcmeta: pack_format ' + pack.pack.pack_format + ' does not match Minecraft ' + String(project.minecraftVersion) + ' (expected ' + expected + ')');
       }

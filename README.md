@@ -153,12 +153,13 @@ git clone git@github.com:furina1013-love/dsh-mcdev-toolbox.git
 | 1.21.4+ | 21 | 单数（`recipe`、`item`） | `id` | 字符串 / `#tag` | 需要 `items/*.json` | `neoforge.mods.toml` |
 | 1.21–1.21.3 | 21 | 单数 | `id` | 字符串 / `#tag` | 不需要 | `neoforge.mods.toml` |
 | 1.20.5–1.20.6 | 21 | 复数 | `id` | 字符串 / `#tag` | 不需要 | `neoforge.mods.toml` |
-| 1.20.2–1.20.4 | 17 | 复数 | `item` | `{item}` / `{tag}` | 不需要 | `mods.toml` |
+| 1.20.3–1.20.4 | 17 | 复数 | `item` | `{item}` / `{tag}` | 不需要 | `mods.toml` |
+| 1.20.2 | 17 | 复数 | `item` | `{item}` / `{tag}` | 不需要 | `mods.toml` |
 | 1.18–1.20.1 | 17 | 复数 | `item` | `{item}` / `{tag}` | 不需要 | Forge 无 NeoForge 元数据 |
 
 版本表覆盖 1.7.10 到 1.21.4。表外版本的策略是“不猜生成物”：
 
-- 比表新（例如 1.21.5、1.22、26.x）：`mcdev_project` 会在 `warnings` 里明说该版本超出支持范围，输出里 `versionKnown=false` 并附 `versionRange`；若 pack format 有核实过的真值（目前 1.21.5 = 55/71、1.21.6 = 63/80、1.21.7–1.21.8 = 64/81）就使用真值，否则 `mcdev_project action=init` 直接拒绝生成，并提示去 minecraft.wiki/w/Pack_format 取准确值后自行补 `pack.mcmeta`。校验器也只在版本已知时才核对 `pack_format`，不会用猜测值判用户的正确文件有错。
+- 比表新（例如 1.21.5、1.22、26.x）：`mcdev_project` 会在 `warnings` 里明说该版本超出支持范围，输出里 `versionKnown=false` 并附 `versionRange`；若 pack format 有核实过的真值（目前 1.21.5 = 55/71、1.21.6 = 63/80、1.21.7–1.21.8 = 64/81）就使用真值；没有真值（如 1.21.9 起的版本）仍照常生成整个工程，只是**跳过** `pack.mcmeta` 并在 `warnings` 里提示，也可以自己传 `packFormat` 整数补上。校验器只在有真值时才核对 `pack_format`，不会用猜测值判用户的正确文件有错。区间外的版本（如 1.12.2、26.x）同样不猜任何 pack format。
 - 比表旧（1.6 及更早）：同样拒绝生成 `pack.mcmeta`，避免写出该世代不存在的格式号。
 
 也就是说生成的 `pack_format` 要么是已核实值，要么根本不生成，不会写入猜测值。
@@ -174,7 +175,7 @@ git clone git@github.com:furina1013-love/dsh-mcdev-toolbox.git
 | `gradleTimeoutMs` | `180000` | 单次 Gradle 任务的硬超时，运行时限制在 5 秒–15 分钟。 |
 | `includeSubagents` | `false` | 是否也为新 subagent 会话安装；默认关闭，避免每个子代理都带 MC 指引。 |
 | `includeExistingSessions` | `false` | 是否也给已恢复的旧会话安装控制工具和指引；开启会改写旧历史，默认关闭。 |
-| `trustedRoots` | `[]` | 允许 `projectDir` 指向的额外绝对路径（最多 20 条）；会话工作目录及其上下级无需配置。 |
+| `trustedRoots` | `[]` | 允许 `projectDir` 指向的额外绝对目录（最多 20 条，不允许 `/`）；会话工作目录及其子目录无需配置，也不信任它的上级目录。路径与配置项都按 `realpath` 解析，工程内的符号链接指向外部时会被拒绝。 |
 | `allowClientRuns` | `false` | 是否允许 `runClient`/`runServer` 等启动游戏的任务；这些任务通常超出工具超时，默认拒绝。 |
 | `maxRunTimeoutMs` | `900000` | 工具参数 `timeoutMs` 的上限，限制在 5 秒–2 小时。 |
 
@@ -203,7 +204,7 @@ cd dsh-mcdev-toolbox
 npm test
 ```
 
-测试不依赖真实 Minecraft 或 Gradle，使用临时目录构造 Fabric 项目、资源、配方、mixin、mapping 和日志 fixture。当前覆盖 **68 个 `node:test` 用例**，包括工具 schema 形状、新/旧会话判定、旧会话显式加载、locale 路径穿越、Gradle 参数拒绝、1.20.4/1.20.5+ ingredient 格式、模型环检测、client-only 源码根、子目录/嵌套工程发现、显式 `projectDir`、越界路径与 `trustedRoots` 授权、初始化路径安全、表外版本不写猜测 pack_format、启动游戏任务默认拒绝、JAR/class 解析和日志尾部截断。
+测试不依赖真实 Minecraft 或 Gradle，使用临时目录构造 Fabric 项目、资源、配方、mixin、mapping 和日志 fixture。当前覆盖 **76 个 `node:test` 用例**，包括工具 schema 形状、新/旧会话判定、旧会话显式加载、locale 路径穿越、Gradle 参数拒绝、1.20.4/1.20.5+ ingredient 格式、模型环检测、client-only 源码根、子目录/嵌套工程发现、显式 `projectDir`、越界路径与 `trustedRoots` 授权、符号链接越权、初始化路径安全、表外版本不写猜测 pack_format、启动游戏任务默认拒绝、JAR/class 解析和日志尾部截断。
 
 ### 目录
 

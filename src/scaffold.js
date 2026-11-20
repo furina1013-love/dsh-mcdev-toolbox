@@ -61,8 +61,10 @@ export async function initProject(options, cwd) {
   if (displayName.includes('$')) throw new Error('name must not contain "$" because Gradle processResources expands it');
   const outer = (await locateProject(cwd)).root;
   if (outer !== undefined && outer !== root) {
-    const shownOuter = path.relative(cwd, outer) || '.';
-    throw new Error('refusing to create a nested project inside existing project "' + shownOuter + '"; set the session working directory to the intended project or an empty directory outside it');
+    // Always name the outer project by its absolute path: a relative "." only
+    // repeats the working directory and does not tell the reader which project
+    // was found or how far above it sits.
+    throw new Error('refusing to create a nested project inside the existing project at "' + outer + '" (target: "' + root + '"); set the session working directory to the intended project or to an empty directory outside it');
   }
   if (outer === root) {
     for (const marker of ['settings.gradle.kts', 'build.gradle.kts']) {
@@ -71,15 +73,15 @@ export async function initProject(options, cwd) {
   }
   await assertRealInside(cwd, root);
   const packFormat = profile.resourcePack;
-  if (packFormat === undefined) {
-    const reason = profile.newer === true
-      ? 'Minecraft ' + minecraftVersion + ' is newer than this build knows; pack_format is unknown for that release, so no pack.mcmeta is generated. Add src/main/resources/pack.mcmeta yourself using the value from minecraft.wiki/w/Pack_format.'
-      : 'Minecraft ' + minecraftVersion + ' is outside the supported range (' + (profile.range ?? 'unknown') + '); pack_format is unknown, so no pack.mcmeta is generated.';
-    throw new Error(reason);
+  if (packFormat === undefined && options.packFormat !== undefined && !Number.isInteger(options.packFormat)) {
+    throw new Error('packFormat must be an integer resource pack format, for example 55');
   }
+  const effectivePackFormat = packFormat ?? options.packFormat;
   const warnings = [];
   const caveat = versionCaveat(profile);
-  if (caveat !== undefined) warnings.push(caveat + ' Generated with Java ' + javaVersion + ' and pack_format ' + packFormat + '.');
+  if (caveat !== undefined) warnings.push(caveat + (effectivePackFormat === undefined
+    ? ' No pack.mcmeta is generated because the pack format for this release is unknown; pass packFormat or add src/main/resources/pack.mcmeta yourself using the value from minecraft.wiki/w/Pack_format.'
+    : ' Generated with Java ' + javaVersion + ' and the pack_format you supplied.'));
   const overwrite = options.overwrite === true;
   const files = new Map();
   files.set('settings.gradle', "pluginManagement {\n    repositories {\n        maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }\n        mavenCentral()\n        gradlePluginPortal()\n    }\n}\n\nrootProject.name = '" + modId + "'\n");
@@ -149,7 +151,13 @@ export async function initProject(options, cwd) {
     entrypoints: { main: [entrypoint] },
     depends: { fabricloader: '>=' + loaderVersion, minecraft: '>=' + minecraftVersion, java: '>=' + javaVersion }
   }, null, 2) + '\n');
-  files.set('src/main/resources/pack.mcmeta', JSON.stringify({ pack: { pack_format: packFormat, description: displayName + ' resources' } }, null, 2) + '\n');
+  if (effectivePackFormat !== undefined) {
+    const pack = { pack_format: effectivePackFormat, description: displayName + ' resources' };
+    const dataPackFormat = profile.dataPack;
+    // From 1.20.5 the resource and data pack formats are numbered separately.
+    if (profile.packFormatVerified === true && dataPackFormat !== undefined) pack.supported_formats = [effectivePackFormat, dataPackFormat];
+    files.set('src/main/resources/pack.mcmeta', JSON.stringify({ pack }, null, 2) + '\n');
+  }
   files.set('src/main/java/' + packageName.split('.').join('/') + '/' + className + '.java', [
     'package ' + packageName + ';',
     '',

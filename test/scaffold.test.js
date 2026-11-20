@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { initProject } from '../src/scaffold.js';
 import { detectProject, validateProject } from '../src/project.js';
+import { exists } from '../src/util.js';
 
 test('initializes a minimal Fabric project that can be detected and validated', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-scaffold-'));
@@ -46,12 +47,19 @@ test('refuses to overwrite an existing scaffold without overwrite=true', async (
 test('keeps init inside the working directory and validates versions', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-scaffold-'));
   await assert.rejects(() => initProject({ modId: 'ruby', minecraftVersion: '1.21.1', directory: '../escape' }, cwd), /escapes the project root/);
+  await assert.rejects(() => initProject({ modId: 'ruby', minecraftVersion: '1.21.9', packFormat: 1.5 }, cwd), /packFormat must be an integer/);
   await assert.rejects(() => initProject({ modId: 'Ruby', minecraftVersion: '1.21.1' }, cwd), /modId must match/);
   await assert.rejects(() => initProject({ modId: 'bad.id', minecraftVersion: '1.21.1' }, cwd), /modId must match/);
   await assert.rejects(() => initProject({ modId: 'ruby', name: '', minecraftVersion: '1.21.1' }, cwd), /name must be/);
   await assert.rejects(() => initProject({ modId: 'ruby', minecraftVersion: 'latest' }, cwd), /minecraftVersion is required/);
-  await assert.rejects(() => initProject({ modId: 'ruby', minecraftVersion: '1.22.0' }, cwd), /pack_format is unknown/);
-  await assert.rejects(() => initProject({ modId: 'ruby', minecraftVersion: '1.6.4' }, cwd), /pack_format is unknown/);
+  // A version the table cannot describe still scaffolds, but no pack.mcmeta is
+  // written and the warning says how to supply the number.
+  const unknown = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-unknown-'));
+  const scaffolded = await initProject({ modId: 'ruby', minecraftVersion: '1.22.0' }, unknown);
+  assert.equal(scaffolded.ok, true);
+  assert.equal(await exists(path.join(unknown, 'src/main/resources/pack.mcmeta')), false);
+  assert.match(scaffolded.warnings.join(' '), /pack format for this release is unknown/);
+  assert.ok(scaffolded.files.some((file) => file.endsWith('fabric.mod.json')));
 });
 
 test('refuses to create a project nested inside an existing project', async () => {
@@ -72,4 +80,30 @@ test('does not write through a symbolic link that escapes the working directory'
   const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-outside-'));
   await fs.symlink(outside, path.join(cwd, 'link'), 'dir');
   await assert.rejects(() => initProject({ modId: 'ruby', minecraftVersion: '1.21.1', directory: 'link' }, cwd), /symbolic link|escapes/);
+});
+
+test('refusing a nested project names the outer project by absolute path', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-scaffold-'));
+  await fs.writeFile(path.join(cwd, 'settings.gradle'), "rootProject.name = 'outer'\n");
+  await assert.rejects(
+    () => initProject({ modId: 'ruby', minecraftVersion: '1.21.1', directory: 'mods/ruby' }, cwd),
+    (error) => error.message.includes(cwd) && !error.message.includes('project "."')
+  );
+});
+
+test('scaffolds a version whose pack formats are verified but untabled', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-scaffold-'));
+  const result = await initProject({ modId: 'ruby', minecraftVersion: '1.21.5' }, cwd);
+  const pack = JSON.parse(await fs.readFile(path.join(cwd, 'src/main/resources/pack.mcmeta'), 'utf8'));
+  assert.equal(pack.pack.pack_format, 55);
+  assert.deepEqual(pack.pack.supported_formats, [55, 71]);
+  assert.match(result.warnings.join(' '), /newer than this build supports/);
+});
+
+test('an unknown release scaffolds without a pack.mcmeta and records no partial files', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-scaffold-'));
+  const result = await initProject({ modId: 'ruby', minecraftVersion: '1.21.9', packFormat: 88 }, cwd);
+  const pack = JSON.parse(await fs.readFile(path.join(cwd, 'src/main/resources/pack.mcmeta'), 'utf8'));
+  assert.equal(pack.pack.pack_format, 88);
+  assert.equal(result.ok, true);
 });

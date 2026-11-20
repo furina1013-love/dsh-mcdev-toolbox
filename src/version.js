@@ -3,16 +3,17 @@ const TABLE = [
   { min: [1, 21, 2], java: 21, singular: true, itemDefinitions: false, resultKey: 'id', ingredientStyle: 'string', neoforgeMeta: 'neoforge.mods.toml', resourcePack: 42, dataPack: 57 },
   { min: [1, 21, 0], java: 21, singular: true, itemDefinitions: false, resultKey: 'id', ingredientStyle: 'string', neoforgeMeta: 'neoforge.mods.toml', resourcePack: 34, dataPack: 48 },
   { min: [1, 20, 5], java: 21, singular: false, itemDefinitions: false, resultKey: 'id', ingredientStyle: 'string', neoforgeMeta: 'neoforge.mods.toml', resourcePack: 32, dataPack: 41 },
+  { min: [1, 20, 3], java: 17, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: 'mods.toml', resourcePack: 22, dataPack: 26 },
   { min: [1, 20, 2], java: 17, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: 'mods.toml', resourcePack: 18, dataPack: 18 },
   { min: [1, 20, 0], java: 17, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 15, dataPack: 15 },
-  { min: [1, 19, 4], java: 17, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 13, dataPack: 13 },
-  { min: [1, 19, 3], java: 17, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 12, dataPack: 12 },
+  { min: [1, 19, 4], java: 17, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 13, dataPack: 12 },
+  { min: [1, 19, 3], java: 17, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 12, dataPack: 10 },
   { min: [1, 19, 0], java: 17, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 9, dataPack: 10 },
   { min: [1, 18, 0], java: 17, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 8, dataPack: 9 },
   { min: [1, 17, 0], java: 16, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 7, dataPack: 7 },
   { min: [1, 16, 2], java: 8, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 6, dataPack: 6 },
-  { min: [1, 16, 0], java: 8, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 5, dataPack: 5 },
-  { min: [1, 15, 0], java: 8, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 5, dataPack: 5 },
+  { min: [1, 16, 0], java: 8, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 5, dataPack: undefined },
+  { min: [1, 15, 0], java: 8, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 5, dataPack: undefined },
   { min: [1, 13, 0], java: 8, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 4, dataPack: 4 },
   { min: [1, 12, 0], java: 8, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 3, dataPack: 3 },
   { min: [1, 11, 0], java: 8, singular: false, itemDefinitions: false, resultKey: 'item', ingredientStyle: 'object', neoforgeMeta: null, resourcePack: 3, dataPack: 3 },
@@ -45,7 +46,7 @@ function compare(current, other) {
   return 0;
 }
 
-const SUPPORTED_RANGE = OLDEST[0] + '.' + OLDEST[1] + ' to ' + NEWEST.join('.');
+const SUPPORTED_RANGE = OLDEST.join('.') + ' to ' + NEWEST.join('.');
 
 /**
  * Pack formats verified after the newest table row. Values are only used when a
@@ -87,9 +88,14 @@ export function versionProfile(minecraftVersion) {
       dataPack: undefined
     };
   }
-  const row = TABLE.find((entry) => atLeast(current, entry.min));
+  const inRange = current[0] === 1 && compare(current, OLDEST) >= 0;
   const newer = current[0] === 1 && compare(current, NEWEST) > 0;
-  const verified = newer ? VERIFIED_PACK_FORMATS[String(minecraftVersion).trim()] : undefined;
+  const key = current.map((part) => String(part)).join('.');
+  // A verified entry only matters for releases the table cannot describe
+  // truthfully, i.e. anything at or above the newest table row's successor.
+  const verified = inRange && newer ? VERIFIED_PACK_FORMATS[key] : undefined;
+  const tableRow = inRange && !newer ? TABLE.find((entry) => atLeast(current, entry.min)) : undefined;
+  const row = tableRow;
   const normalized = row === undefined
     ? {
       java: current[1] >= 18 ? 17 : 8,
@@ -111,15 +117,21 @@ export function versionProfile(minecraftVersion) {
       resourcePack: row.resourcePack,
       dataPack: row.dataPack
     };
-  const supported = current[0] === 1 && compare(current, OLDEST) >= 0;
-  const profile = { ...normalized, parsed: true, known: supported && !newer, newer, supported, range: SUPPORTED_RANGE };
-  if (newer) {
-    // Never hand out a guessed pack format: newer releases renumber them and a
-    // wrong number makes the generated resource or data pack silently invalid.
-    profile.resourcePack = verified?.resourcePack;
-    profile.dataPack = verified?.dataPack;
-    profile.packFormatVerified = verified !== undefined;
+  if (verified !== undefined) {
+    normalized.java = 21;
+    normalized.dataDirStyle = 'singular';
+    normalized.resultKey = 'id';
+    normalized.ingredientStyle = 'string';
+    normalized.neoforgeMeta = 'neoforge.mods.toml';
+    normalized.resourcePack = verified.resourcePack;
+    normalized.dataPack = verified.dataPack;
   }
+  const supported = inRange;
+  const profile = { ...normalized, parsed: true, known: supported && !newer, newer, supported, range: SUPPORTED_RANGE };
+  // Only a table row inside the supported range, or an explicitly verified
+  // entry, may provide pack formats. Anything else gets no number at all:
+  // a guessed pack_format produces a pack that silently never loads.
+  if (verified !== undefined) profile.packFormatVerified = true;
   return profile;
 }
 
@@ -136,7 +148,7 @@ export function versionCaveat(profile) {
     return 'Minecraft version is newer than this build supports (' + profile.range + '); pack_format is unknown for this release, so no pack.mcmeta format is generated and item definition rules are guessed — check minecraft.wiki/w/Pack_format.';
   }
   if (profile.parsed !== false) {
-    return 'Minecraft version is outside the supported range (' + profile.range + '); generated conventions are conservative fallbacks.';
+    return 'Minecraft version is outside the supported range (' + profile.range + '); pack_format is unknown, so no pack.mcmeta format is generated and other conventions are best-effort guesses.';
   }
   return 'Minecraft version could not be parsed; generated conventions are conservative fallbacks.';
 }
