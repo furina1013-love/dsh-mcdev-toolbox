@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { exists, resolveInside } from './util.js';
 import { locateProject } from './project.js';
-import { versionProfile } from './version.js';
+import { versionProfile, versionCaveat } from './version.js';
 
 const MOD_ID = /^[a-z][a-z0-9_-]{0,63}$/;
 const MC_VERSION = /^\d+\.\d+(?:\.\d+)?$/;
@@ -70,9 +70,16 @@ export async function initProject(options, cwd) {
     }
   }
   await assertRealInside(cwd, root);
-  const packFormat = profile.resourcePack ?? 34;
+  const packFormat = profile.resourcePack;
+  if (packFormat === undefined) {
+    const reason = profile.newer === true
+      ? 'Minecraft ' + minecraftVersion + ' is newer than this build knows; pack_format is unknown for that release, so no pack.mcmeta is generated. Add src/main/resources/pack.mcmeta yourself using the value from minecraft.wiki/w/Pack_format.'
+      : 'Minecraft ' + minecraftVersion + ' is outside the supported range (' + (profile.range ?? 'unknown') + '); pack_format is unknown, so no pack.mcmeta is generated.';
+    throw new Error(reason);
+  }
   const warnings = [];
-  if (!profile.known) warnings.push('Minecraft ' + minecraftVersion + ' is not in the built-in version table; Java ' + javaVersion + ' and pack_format ' + packFormat + ' use fallback defaults.');
+  const caveat = versionCaveat(profile);
+  if (caveat !== undefined) warnings.push(caveat + ' Generated with Java ' + javaVersion + ' and pack_format ' + packFormat + '.');
   const overwrite = options.overwrite === true;
   const files = new Map();
   files.set('settings.gradle', "pluginManagement {\n    repositories {\n        maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }\n        mavenCentral()\n        gradlePluginPortal()\n    }\n}\n\nrootProject.name = '" + modId + "'\n");

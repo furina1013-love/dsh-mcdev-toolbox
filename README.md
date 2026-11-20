@@ -69,7 +69,7 @@ git clone git@github.com:furina1013-love/dsh-mcdev-toolbox.git
 | 组 | 工具 | 主要操作 | 用途 |
 |---|---|---|---|
 | `project` | `mcdev_project` | `inspect` / `validate` / `init` | `inspect` 识别 loader、Minecraft/Java 版本、mod id、mappings、元数据、mixin 配置和源码根；`validate` 检查 `fabric.mod.json`、`mods.toml`/`neoforge.mods.toml`、`pack.mcmeta`、mixin 类；`init` 在空目录创建最小 Fabric 工程。 |
-| `project` | `mcdev_build` | `task`（可选，默认 `build`）+ `args` | 在项目根目录运行一个白名单 Gradle task，例如 `build`、`compileJava`、`processResources`、`runData`、`genSources`、`runClient`。硬超时、输出截断、错误行提取、构建产物列表。 |
+| `project` | `mcdev_build` | `task`（可选，默认 `build`）+ `args` | 在项目根目录运行一个白名单 Gradle task，例如 `build`、`compileJava`、`processResources`、`runData`、`genSources`。硬超时、输出截断、错误行提取、构建产物列表，并报告 Gradle 实际会用的 Java 版本。启动游戏的任务（`runClient`、`runServer`、`runGameTestServer` 等）默认拒绝。 |
 | `assets` | `mcdev_assets` | `validate` / `item` / `block` / `lang` | 校验或生成 item、block 的 model、blockstate、lang 和 1.21.4+ item model definition；检查本地 parent/texture/model 引用和 parent 环。 |
 | `data` | `mcdev_data` | `recipe` / `tag` / `loot` / `validate` | 生成或校验 shaped、shapeless、熔炉、高炉、烟熏、营火、切石、锻造配方；item/block tag 与简单方块 loot table。 |
 | `code` | `mcdev_mappings` | `query` | 搜索本地 Tiny/TSRG/ProGuard 映射文件，返回 official/named 类、方法、字段。 |
@@ -103,7 +103,20 @@ git clone git@github.com:furina1013-love/dsh-mcdev-toolbox.git
 }
 ```
 
-`projectDir` 必须是包含 `settings.gradle`/`build.gradle` 的工程根，不能指向工程内部子目录；相对路径按会话工作目录解析，越界路径会被拒绝。`mcdev_project action=init` 不使用 `projectDir`，创建位置由 `directory` 决定。
+`projectDir` 必须是包含 `settings.gradle`/`build.gradle` 的工程根，不能指向工程内部子目录；相对路径按会话工作目录解析，越界路径会被拒绝。
+
+因为工程目录里的 `gradlew` 会被实际执行，越界的 `projectDir` 需要显式授权：会话工作目录本身及其子目录、以及它的上级目录永远可用；其余路径必须出现在配置里：
+
+```yaml
+- insert:
+    - id: mcdev-toolbox
+      name: '@local/dsh-mcdev-toolbox'
+      config:
+        trustedRoots:
+          - /root/java-mod-dev
+```
+
+未授权时的报错会说明当前 `trustedRoots` 内容，可直接复制修改。`mcdev_project action=init` 不使用 `projectDir`，创建位置由 `directory` 决定。
 
 生成后先执行一次 `gradle wrapper --gradle-version 8.11`（或使用已有 wrapper），再调用 `mcdev_build`。`init` 默认拒绝覆盖已存在的生成文件；只有明确传 `overwrite=true` 才替换。它也不会在已有工程内部再嵌套创建工程，不会给 Kotlin DSL 工程叠一套 Groovy 构建文件，并会拒绝通过符号链接写到工作目录之外。脚手架使用 Fabric Loom、官方 Mojang mappings 和可覆盖的 loader/Loom 版本，生成的是可继续编辑的起点，不是完整模板市场工程。
 
@@ -143,7 +156,12 @@ git clone git@github.com:furina1013-love/dsh-mcdev-toolbox.git
 | 1.20.2–1.20.4 | 17 | 复数 | `item` | `{item}` / `{tag}` | 不需要 | `mods.toml` |
 | 1.18–1.20.1 | 17 | 复数 | `item` | `{item}` / `{tag}` | 不需要 | Forge 无 NeoForge 元数据 |
 
-未知版本会退回接近的约定，并在 `mcdev_project validate` 中给出 warning。快照版本或新版本请先运行 `mcdev_project validate` 和 `mcdev_build build`。
+版本表覆盖 1.7.10 到 1.21.4。表外版本的策略是“不猜生成物”：
+
+- 比表新（例如 1.21.5、1.22、26.x）：`mcdev_project` 会在 `warnings` 里明说该版本超出支持范围，输出里 `versionKnown=false` 并附 `versionRange`；若 pack format 有核实过的真值（目前 1.21.5 = 55/71、1.21.6 = 63/80、1.21.7–1.21.8 = 64/81）就使用真值，否则 `mcdev_project action=init` 直接拒绝生成，并提示去 minecraft.wiki/w/Pack_format 取准确值后自行补 `pack.mcmeta`。校验器也只在版本已知时才核对 `pack_format`，不会用猜测值判用户的正确文件有错。
+- 比表旧（1.6 及更早）：同样拒绝生成 `pack.mcmeta`，避免写出该世代不存在的格式号。
+
+也就是说生成的 `pack_format` 要么是已核实值，要么根本不生成，不会写入猜测值。
 
 ## 配置
 
@@ -156,6 +174,9 @@ git clone git@github.com:furina1013-love/dsh-mcdev-toolbox.git
 | `gradleTimeoutMs` | `180000` | 单次 Gradle 任务的硬超时，运行时限制在 5 秒–15 分钟。 |
 | `includeSubagents` | `false` | 是否也为新 subagent 会话安装；默认关闭，避免每个子代理都带 MC 指引。 |
 | `includeExistingSessions` | `false` | 是否也给已恢复的旧会话安装控制工具和指引；开启会改写旧历史，默认关闭。 |
+| `trustedRoots` | `[]` | 允许 `projectDir` 指向的额外绝对路径（最多 20 条）；会话工作目录及其上下级无需配置。 |
+| `allowClientRuns` | `false` | 是否允许 `runClient`/`runServer` 等启动游戏的任务；这些任务通常超出工具超时，默认拒绝。 |
+| `maxRunTimeoutMs` | `900000` | 工具参数 `timeoutMs` 的上限，限制在 5 秒–2 小时。 |
 
 示例：
 
@@ -169,6 +190,9 @@ git clone git@github.com:furina1013-love/dsh-mcdev-toolbox.git
         gradleTimeoutMs: 180000
         includeSubagents: false
         includeExistingSessions: false
+        allowClientRuns: false
+        maxRunTimeoutMs: 900000
+        trustedRoots: []
 ```
 
 ## 开发
@@ -179,7 +203,7 @@ cd dsh-mcdev-toolbox
 npm test
 ```
 
-测试不依赖真实 Minecraft 或 Gradle，使用临时目录构造 Fabric 项目、资源、配方、mixin、mapping 和日志 fixture。当前覆盖 **63 个 `node:test` 用例**，包括工具 schema 形状、新/旧会话判定、旧会话显式加载、locale 路径穿越、Gradle 参数拒绝、1.20.4/1.20.5+ ingredient 格式、模型环检测、client-only 源码根、子目录/嵌套工程发现、显式 `projectDir` 与越界路径、初始化路径安全、JAR/class 解析和日志尾部截断。
+测试不依赖真实 Minecraft 或 Gradle，使用临时目录构造 Fabric 项目、资源、配方、mixin、mapping 和日志 fixture。当前覆盖 **68 个 `node:test` 用例**，包括工具 schema 形状、新/旧会话判定、旧会话显式加载、locale 路径穿越、Gradle 参数拒绝、1.20.4/1.20.5+ ingredient 格式、模型环检测、client-only 源码根、子目录/嵌套工程发现、显式 `projectDir`、越界路径与 `trustedRoots` 授权、初始化路径安全、表外版本不写猜测 pack_format、启动游戏任务默认拒绝、JAR/class 解析和日志尾部截断。
 
 ### 目录
 

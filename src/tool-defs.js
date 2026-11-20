@@ -132,7 +132,7 @@ export function groupTools({ ctx, config }) {
     if (exec.agent === undefined) throw new Error('Minecraft tools require an Agent Session');
     const cwd = await ctx.workingDirectory.ensure(exec.agent, exec.signal);
     if (projectDir === undefined || projectDir === null || projectDir === '') return cwd;
-    return (await detectProjectFrom(cwd, projectDir)).root;
+    return (await detectProjectFrom(cwd, projectDir, { trustedRoots: config?.trustedRoots ?? [] })).root;
   };
   const maxOutputChars = Math.max(2000, Math.min(Number(config?.maxOutputChars) || 12000, 16000));
   const createTool = (name, description, parameters, execute) => tool(name, description, parameters, execute, maxOutputChars);
@@ -155,14 +155,22 @@ export function groupTools({ ctx, config }) {
         const cwd = await cwdOf(exec, args.action === 'init' ? undefined : args.projectDir);
         return runProject(args.action ?? 'inspect', cwd, args);
       }),
-      createTool('mcdev_build', 'Run one Gradle task in the detected project with a hard timeout and bounded output. Prefer build, compileJava, processResources, runData, genSources, or runClient; do not use for shell commands.', {
+      createTool('mcdev_build', 'Run one Gradle task in the detected project with a hard timeout and bounded output. Prefer build, compileJava, processResources, runData, or genSources; do not use for shell commands. Tasks that start a game client or server (runClient, runServer, runGameTestServer) usually outlive the timeout and are refused unless the plugin config sets allowClientRuns=true.', {
         projectDir: { type: 'string', description: 'Optional Gradle project root, absolute or relative to the session working directory. Use when the session cwd is not the mod project.' },
         task: { type: 'string', description: 'Gradle task name such as build, compileJava, runData, genSources, or runClient; defaults to build.' },
         args: { type: 'array', items: { type: 'string' }, description: 'Optional Gradle arguments, at most 8, e.g. --stacktrace or --rerun-tasks.' },
-        timeoutMs: { type: 'integer', description: 'Optional timeout from 5000 to 900000 ms; defaults to the plugin setting.' }
+        timeoutMs: { type: 'integer', description: 'Optional timeout from 5000 to 900000 ms (up to the plugin maxRunTimeoutMs); defaults to the plugin setting.' }
       }, async (args, exec) => {
-        const timeoutMs = Math.min(900000, Math.max(5000, args.timeoutMs ?? config.gradleTimeoutMs));
-        return runBuildTool({ task: args.task ?? 'build', args: args.args ?? [], timeoutMs, maxOutputChars: config.maxOutputChars, cwd: await cwdOf(exec, args.projectDir) });
+        const ceiling = Math.max(5000, Math.min(Number(config.maxRunTimeoutMs) || 900000, 7200000));
+        const timeoutMs = Math.min(ceiling, Math.max(5000, args.timeoutMs ?? config.gradleTimeoutMs));
+        return runBuildTool({
+          task: args.task ?? 'build',
+          args: args.args ?? [],
+          timeoutMs,
+          maxOutputChars: config.maxOutputChars,
+          allowClientRuns: config.allowClientRuns === true,
+          cwd: await cwdOf(exec, args.projectDir)
+        });
       })
     ],
     assets: [

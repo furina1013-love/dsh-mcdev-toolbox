@@ -3,11 +3,35 @@ import { shouldInstallTools } from './src/session.js';
 import { CONTROL_TOOL, PLUGIN_NAME, SECTION_NAME } from './src/names.js';
 import { GROUPS, GROUP_NAMES, controlTool, groupTools } from './src/tool-defs.js';
 
+/**
+ * A resumed transcript can still contain a developer tool-addition for these
+ * tools while the plugin refuses to register them. Detect that case so the log
+ * explains why the model may try to call a tool that no longer exists.
+ */
+function mentionsToolbox(session) {
+  try {
+    const events = typeof session?.events === 'function' ? session.events() : session?.history;
+    if (!Array.isArray(events)) return false;
+    return events.some((event) => {
+      const text = JSON.stringify(event);
+      return text !== undefined && text.includes(CONTROL_TOOL);
+    });
+  } catch {
+    return false;
+  }
+}
+
 /** Stable Loader identity. */
 export const name = PLUGIN_NAME;
 /** Host services required by this plugin. */
 export const inject = ['tools', 'systemPrompt', 'workingDirectory', 'agents'];
 
+/**
+ * Position of the guidance section in the system prompt. DSH assigns 10000 to
+ * harness-level sources and 10100/10200 to web-surface and persona suffixes, so
+ * 10050 keeps this plugin-specific text after the harness and before the UI
+ * layers without colliding with either.
+ */
 const GUIDANCE_ORDER = 10050;
 
 function guidanceText() {
@@ -123,6 +147,9 @@ export async function apply(ctx, rawConfig) {
       source
     })) return;
     if (installs.has(agent)) return;
+    if (config.includeExistingSessions !== true && mentionsToolbox(agent.session)) {
+      logger.info(PLUGIN_NAME + ': this conversation already references ' + CONTROL_TOOL + ' in its history, so the tools stay unregistered here; start a new conversation to use the current build.');
+    }
     const fiber = agent.ctx.inject(['tools', 'systemPrompt', 'workingDirectory'], (scoped) => {
       installScoped(scoped, config, logger);
     });

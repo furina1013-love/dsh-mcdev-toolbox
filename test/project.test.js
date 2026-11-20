@@ -70,7 +70,8 @@ test('does not compare Java versions when the version profile has no requirement
   const project = await detectProject(cwd);
   assert.equal(project.minecraftVersion, 'snapshot');
   assert.equal(project.versionProfile.java, undefined);
-  assert.ok(project.warnings.some((warning) => warning.includes('not in the built-in version table')));
+  assert.ok(project.warnings.some((warning) => warning.includes('could not be parsed')));
+  assert.equal(project.versionKnown, false);
   const validation = await validateProject(project);
   assert.ok(!validation.warnings.some((warning) => warning.includes('may be too old')));
 });
@@ -137,4 +138,20 @@ test('uses an explicit project root outside the working directory', async () => 
   await assert.rejects(() => detectProjectFrom(session, path.dirname(root)), /must be the Gradle project root/);
   await assert.rejects(() => detectProjectFrom(session, path.join('..', 'outside')), /path escapes/);
   await assert.rejects(() => detectProjectFrom(session, path.join(session, 'missing')), /not an existing directory/);
+});
+
+test('requires trust before using a project root outside the session directory', async () => {
+  const session = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-session-'));
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-outside-'));
+  await fs.writeFile(path.join(outside, 'settings.gradle'), "rootProject.name = 'other'\n");
+  await fs.writeFile(path.join(outside, 'gradle.properties'), 'minecraft_version=1.21.1\n');
+
+  await assert.rejects(() => detectProjectFrom(session, outside), /outside the session working directory and not listed in trustedRoots/);
+  const trusted = await detectProjectFrom(session, outside, { trustedRoots: [path.dirname(outside)] });
+  assert.equal(trusted.root, outside);
+
+  const child = path.join(session, 'mods', 'inner');
+  await fs.mkdir(child, { recursive: true });
+  await fs.writeFile(path.join(child, 'settings.gradle'), "rootProject.name = 'inner'\n");
+  assert.equal((await detectProjectFrom(session, child)).root, child);
 });

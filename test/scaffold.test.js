@@ -26,6 +26,15 @@ test('initializes a minimal Fabric project that can be detected and validated', 
   assert.equal(validation.errors.length, 0);
 });
 
+test('a newer release with a verified pack format still scaffolds', async () => {
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-scaffold-'));
+  const result = await initProject({ modId: 'ruby', minecraftVersion: '1.21.5' }, cwd);
+  assert.equal(result.ok, true);
+  const meta = JSON.parse(await fs.readFile(path.join(cwd, 'src/main/resources/pack.mcmeta'), 'utf8'));
+  assert.equal(meta.pack.pack_format, 55);
+  assert.ok(result.warnings.some((warning) => warning.includes('newer than this build supports')));
+});
+
 test('refuses to overwrite an existing scaffold without overwrite=true', async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'mcdev-scaffold-'));
   await initProject({ modId: 'ruby', minecraftVersion: '1.21.1' }, cwd);
@@ -41,6 +50,8 @@ test('keeps init inside the working directory and validates versions', async () 
   await assert.rejects(() => initProject({ modId: 'bad.id', minecraftVersion: '1.21.1' }, cwd), /modId must match/);
   await assert.rejects(() => initProject({ modId: 'ruby', name: '', minecraftVersion: '1.21.1' }, cwd), /name must be/);
   await assert.rejects(() => initProject({ modId: 'ruby', minecraftVersion: 'latest' }, cwd), /minecraftVersion is required/);
+  await assert.rejects(() => initProject({ modId: 'ruby', minecraftVersion: '1.22.0' }, cwd), /pack_format is unknown/);
+  await assert.rejects(() => initProject({ modId: 'ruby', minecraftVersion: '1.6.4' }, cwd), /pack_format is unknown/);
 });
 
 test('refuses to create a project nested inside an existing project', async () => {

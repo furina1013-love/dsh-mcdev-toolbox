@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { exists, parseKeyValueProperties, readJson, readTextLimited, relativeTo, resolveInside, statKind, walk } from './util.js';
-import { versionProfile } from './version.js';
+import { versionProfile, versionCaveat } from './version.js';
 
 const BUILD_FILES = ['build.gradle', 'build.gradle.kts'];
 const SETTINGS_FILES = ['settings.gradle', 'settings.gradle.kts'];
@@ -80,7 +80,7 @@ export async function locateProject(cwd) {
 }
 
 /** Detect a project from a session cwd plus an optional explicit project root. */
-export async function detectProjectFrom(cwd, projectDir) {
+export async function detectProjectFrom(cwd, projectDir, options = {}) {
   const base = path.resolve(cwd);
   if (projectDir === undefined || projectDir === null || String(projectDir).trim() === '') {
     return detectProject(base);
@@ -94,7 +94,41 @@ export async function detectProjectFrom(cwd, projectDir) {
   if (located.root === undefined || path.resolve(located.root) !== path.resolve(target)) {
     throw new Error('projectDir must be the Gradle project root (settings.gradle or build.gradle): ' + target);
   }
+  if (!isTrustedProjectRoot(base, target, options.trustedRoots ?? [])) {
+    const error = new Error(trustInstruction(target, options.trustedRoots ?? []));
+    error.code = 'UNTRUSTED_PROJECT_ROOT';
+    throw error;
+  }
   return detectProject(target);
+}
+
+/**
+ * Decide whether a project root may be used when the caller supplied an
+ * explicit projectDir. Without this check an absolute projectDir would let any
+ * reachable directory contribute its own gradlew script, which is arbitrary code
+ * execution. A directory is trusted when it is the session working directory or
+ * one of its descendants, inside one of the configured trustedRoots, or an
+ * ancestor of the working directory (the user is already working there).
+ */
+export function isTrustedProjectRoot(cwd, root, trustedRoots = []) {
+  const base = path.resolve(cwd);
+  const target = path.resolve(root);
+  const inside = (child, parent) => {
+    const rel = path.relative(parent, child);
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  };
+  if (inside(target, base) || inside(base, target)) return true;
+  return trustedRoots.some((entry) => {
+    const trusted = path.resolve(entry);
+    return inside(target, trusted);
+  });
+}
+
+/**
+ * Explain how to approve a project root that is outside the session directory.
+ */
+export function trustInstruction(root, trustedRoots = []) {
+  return 'projectDir resolves to ' + root + ', which is outside the session working directory and not listed in trustedRoots; add it to the plugin config trustedRoots (current: ' + (trustedRoots.length === 0 ? 'empty' : trustedRoots.join(', ')) + ') or run the session from that directory.';
 }
 
 /** Backwards-compatible helper returning only the root path. */
@@ -225,10 +259,10 @@ export async function detectProject(cwd) {
   if (located.search.mode === 'descendant') warnings.push('No Gradle project marker in the working directory; using ' + located.search.relative + ' found below it.');
   if (located.search.ambiguous) warnings.push('Multiple Gradle projects found below the working directory (' + located.search.candidates.join(', ') + '); using ' + located.search.relative + '. Set the session working directory to the intended project when this is not the one.');
 
-  if (minecraftVersion !== undefined && !profile.known) warnings.push('Minecraft version ' + minecraftVersion + ' is not in the built-in version table; version-specific checks use fallback conventions');
+  const caveat = minecraftVersion === undefined ? undefined : versionCaveat(profile);
+  if (caveat !== undefined) warnings.push(caveat);
   if (loader === 'unknown') warnings.push('Could not identify Fabric/NeoForge/Forge from build files or metadata.');
   if (minecraftVersion === undefined) warnings.push('Could not read the Minecraft version.');
-  else if (!profile.known) warnings.push('Unknown Minecraft version profile: ' + minecraftVersion + '; version-specific checks may be approximate.');
   if (modId === undefined) warnings.push('Could not read the mod id.');
   if (loader === 'neoforge' && profile.neoforgeMeta === null) warnings.push('NeoForge is not available for Minecraft 1.20.1; use Forge or a newer Minecraft version.');
   if (loader === 'neoforge' && profile.neoforgeMeta !== undefined && modsMeta !== undefined && neoforgeText === undefined && profile.neoforgeMeta === 'neoforge.mods.toml') warnings.push('NeoForge on this Minecraft version expects META-INF/neoforge.mods.toml, not mods.toml.');
@@ -242,6 +276,8 @@ export async function detectProject(cwd) {
     mappings,
     javaVersion,
     versionProfile: profile,
+    versionKnown: profile.known,
+    versionRange: profile.range,
     modId,
     buildFile: buildFile === undefined ? undefined : relativeTo(root, buildFile),
     settingsFile: settingsFile === undefined ? undefined : relativeTo(root, settingsFile),
@@ -326,7 +362,7 @@ export async function validateProject(project) {
       const pack = await readJson(packFile);
       if (!Number.isInteger(pack.pack?.pack_format)) warnings.push('pack.mcmeta: pack.pack_format must be an integer');
       else {
-        const expected = project.versionProfile?.resourcePack;
+        const expected = project.versionKnown === true ? project.versionProfile?.resourcePack : undefined;
         const supported = Array.isArray(pack.pack.supported_formats) ? pack.pack.supported_formats : [];
         if (expected !== undefined && pack.pack.pack_format !== expected && !supported.includes(expected)) warnings.push('pack.mcmeta: pack_format ' + pack.pack.pack_format + ' does not match Minecraft ' + String(project.minecraftVersion) + ' (expected ' + expected + ')');
       }

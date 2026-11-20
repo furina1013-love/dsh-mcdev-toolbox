@@ -12,8 +12,15 @@ test('rejects Gradle arguments that can escape the project', async () => {
 
 test('accepts common and namespaced Gradle tasks', () => {
   assert.doesNotThrow(() => assertGradleInvocation('build'));
-  assert.doesNotThrow(() => assertGradleInvocation(':fabric:runClient'));
+  assert.doesNotThrow(() => assertGradleInvocation(':fabric:build'));
   assert.doesNotThrow(() => assertGradleInvocation('runData', ['--stacktrace']));
+});
+
+test('refuses game client and server tasks unless the config opts in', () => {
+  assert.throws(() => assertGradleInvocation('runClient'), /starts a Minecraft client\/server/);
+  assert.throws(() => assertGradleInvocation(':fabric:runServer'), /starts a Minecraft client\/server/);
+  assert.doesNotThrow(() => assertGradleInvocation('runClient', [], { allowClientRuns: true }));
+  assert.throws(() => assertGradleInvocation('runClient', ['-Px=1'], { allowClientRuns: true }), /redirect the build root/);
 });
 
 test('rejects unknown tasks and property overrides', () => {
@@ -33,4 +40,6 @@ test('defaults to the build task when none is supplied', async () => {
   const result = await runGradle({ cwd: root, timeoutMs: 20000 });
   assert.equal(result.task, 'build');
   assert.equal(result.ok, true);
+  assert.equal(typeof result.java.found, 'boolean');
+  assert.ok(Array.isArray(result.warnings));
 });

@@ -14,12 +14,20 @@ const ALLOWED_TASKS = new Set([
   'runGameTestServer', 'runServer', 'runServerData', 'sourcesJar', 'tasks', 'test',
   'testClasses', 'wrapper'
 ]);
+/** Tasks that start a game process; they run long and are gated by config. */
+const CLIENT_TASKS = new Set(['runClient', 'runClientData', 'runGameTestServer', 'runServer', 'runServerData']);
+
+function isClientTask(task) {
+  const segments = String(task ?? '').replace(/^:+/, '').split(':').filter(Boolean);
+  return CLIENT_TASKS.has(segments[segments.length - 1]);
+}
+
 const ARG_PATTERN = /^[A-Za-z0-9_.:=/+-]{1,160}$/;
 const DANGEROUS_ARG = /^(?:--(?:project-dir|init-script|build-file|settings-file|gradle-user-home|include-build|project-prop|system-prop)(?:=|$)|-[IbcgPD])/;
 const ERROR_PATTERN = /^(?:e: |error: |FAILURE:|Caused by:|Execution failed for task |> Task .* FAILED|\d+ tests? failed|Exception in thread|A failure occurred)/i;
 
 /** Validate the task/argument surface before any process is spawned. */
-export function assertGradleInvocation(task, args = []) {
+export function assertGradleInvocation(task, args = [], options = {}) {
   if (typeof task !== 'string' || !TASK_PATTERN.test(task)) {
     throw new Error('task must be a Gradle task name such as build, compileJava, runData, or runClient');
   }
@@ -27,11 +35,35 @@ export function assertGradleInvocation(task, args = []) {
   if (segments.length === 0 || !ALLOWED_TASKS.has(segments[segments.length - 1])) {
     throw new Error('task is not in the allowed Gradle task list: ' + task);
   }
+  if (isClientTask(task) && options.allowClientRuns !== true) {
+    throw new Error('task ' + task + ' starts a Minecraft client/server and normally outlives a tool call timeout; set allowClientRuns: true in the mcdev-toolbox plugin config and pass a large timeoutMs to run it, or run gradlew manually');
+  }
   if (!Array.isArray(args) || args.length > 8) throw new Error('args must be an array of at most 8 Gradle arguments');
   for (const arg of args) {
     if (typeof arg !== 'string' || !ARG_PATTERN.test(arg)) throw new Error('unsupported Gradle argument: ' + String(arg));
     if (DANGEROUS_ARG.test(arg)) throw new Error('argument can redirect the build root or load an external script: ' + arg);
   }
+}
+
+/**
+ * Gradle needs the JDK whose major version matches the project. Report which
+ * java the build will actually use so the model does not assume Gradle picks
+ * the version from the Minecraft profile on its own.
+ */
+export async function describeJavaRuntime() {
+  const fromJavaHome = process.env.JAVA_HOME === undefined ? undefined : path.join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'java.exe' : 'java');
+  const command = fromJavaHome !== undefined && (await exists(fromJavaHome)) ? fromJavaHome : 'java';
+  const outcome = await new Promise((resolve) => {
+    let stdout = '';
+    const child = spawn(command, ['-version'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stdout?.on('data', (chunk) => { stdout += chunk.toString('utf8'); });
+    child.stderr?.on('data', (chunk) => { stdout += chunk.toString('utf8'); });
+    child.on('error', (error) => resolve({ error }));
+    child.on('close', () => resolve({ text: stdout }));
+  });
+  if (outcome.error !== undefined) return { source: fromJavaHome === undefined ? 'PATH' : 'JAVA_HOME', found: false, error: outcome.error.code === 'ENOENT' ? 'java not found on PATH' : String(outcome.error.message ?? outcome.error) };
+  const match = /(?:version|openjdk) "?([^"\s]+)"?/.exec(outcome.text);
+  return { source: fromJavaHome === undefined ? 'PATH' : 'JAVA_HOME', found: true, version: match?.[1] };
 }
 
 function commandFor(root) {
@@ -82,14 +114,23 @@ async function listArtifacts(root) {
 }
 
 /** Run one Gradle task with bounded capture and a hard timeout. */
-export async function runGradle({ cwd, task = 'build', args = [], timeoutMs = 180000, maxOutputChars = 12000 }) {
-  assertGradleInvocation(task, args);
+export async function runGradle({ cwd, task = 'build', args = [], timeoutMs = 180000, maxOutputChars = 12000, allowClientRuns = false }) {
+  assertGradleInvocation(task, args, { allowClientRuns });
   const project = await detectProject(cwd);
   if (!project.found) throw new Error('no Gradle project found from the session working directory');
   const wrapper = commandFor(project.root);
   if (!(await exists(wrapper))) throw new Error('Gradle wrapper not found: ' + wrapper);
   const started = Date.now();
-  const child = spawn(wrapper, [task, '--console=plain', '--no-daemon', ...args], {
+  const spawnArgs = [task, '--console=plain'];
+  if (isClientTask(task)) {
+    // A game process needs a real daemon to survive the tool call; --no-daemon
+    // makes Gradle run in-process and kills the client as soon as we return.
+    spawnArgs.push('--info');
+  } else {
+    spawnArgs.push('--no-daemon');
+  }
+  spawnArgs.push(...args);
+  const child = spawn(wrapper, spawnArgs, {
     cwd: project.root,
     env: { ...process.env, CI: 'true' },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -109,13 +150,22 @@ export async function runGradle({ cwd, task = 'build', args = [], timeoutMs = 18
   clearTimeout(timer);
   const durationMs = Date.now() - started;
   const combined = stdout + '\n' + stderr;
+  const clientTask = isClientTask(task);
   const success = !timedOut && outcome.code === 0 && /BUILD SUCCESSFUL/i.test(combined);
   const bounded = boundText(combined.trim(), Math.min(maxOutputChars, 16000));
   const artifacts = await listArtifacts(project.root);
+  const java = await describeJavaRuntime();
+  const warnings = [];
+  const required = project.versionProfile?.java;
+  const actual = Number(/^(\d+)/.exec(String(java.version ?? ''))?.[1]);
+  if (timedOut && clientTask) warnings.push('The game process was still running when the timeout hit and was killed; the captured output above is what it printed before that. Run it from a terminal to interact with the client or server.');
+  if (java.found !== true) warnings.push('java was not found on PATH or in JAVA_HOME (' + String(java.error ?? 'unknown error') + '); Gradle needs JDK ' + String(required ?? '17 or newer') + '. Set JAVA_HOME to a matching JDK.');
+  else if (Number.isInteger(required) && Number.isInteger(actual) && actual < required) warnings.push('Gradle will run on Java ' + actual + ' from ' + java.source + ', but Minecraft ' + String(project.minecraftVersion) + ' requires Java ' + required + '; point JAVA_HOME at a JDK ' + required + '.');
   return {
     ok: success,
     task,
     project: project.root,
+    java,
     exitCode: outcome.code,
     timedOut,
     durationMs,
@@ -123,6 +173,7 @@ export async function runGradle({ cwd, task = 'build', args = [], timeoutMs = 18
     errors: collectErrors(stdout, stderr),
     tail: bounded.text,
     truncated: bounded.truncated,
-    artifacts
+    artifacts,
+    warnings
   };
 }
